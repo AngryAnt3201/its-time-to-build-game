@@ -1,6 +1,6 @@
 use its_time_to_build_server::ecs::components::*;
 use its_time_to_build_server::ecs::world::create_world;
-use its_time_to_build_server::ecs::systems::{agent_tick, building, combat, crank, economy, spawn};
+use its_time_to_build_server::ecs::systems::{agent_tick, agent_wander, building, combat, crank, economy, spawn};
 use its_time_to_build_server::game::{agents, collision};
 use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
@@ -361,6 +361,9 @@ async fn main() {
 
         // ── 7b. Agent turn tick ─────────────────────────────────────
         let agent_tick_result = agent_tick::agent_tick_system(&mut world, &mut game_state.economy);
+
+        // ── 7c. Idle agent wandering ─────────────────────────────────
+        agent_wander::agent_wander_system(&mut world);
 
         // ── 8. Collect log entries from system results ───────────────
         let mut log_entries: Vec<LogEntry> = Vec::new();
