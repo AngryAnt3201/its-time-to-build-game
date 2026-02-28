@@ -532,8 +532,8 @@ export class WorldRenderer {
   // ── Chest placement ──────────────────────────────────────────────
 
   private placeChests(layer: Container, cx: number, cy: number): void {
-    const CHEST_SEED = 7777;
-    const STEP = 16; // check every 16 tiles → ~4 candidates per chunk
+    const CHEST_SEED = 55555;
+    const STEP = 8; // check every 8 tiles → 16 candidates per chunk
 
     for (let ty = 0; ty < CHUNK_SIZE; ty += STEP) {
       for (let tx = 0; tx < CHUNK_SIZE; tx += STEP) {
@@ -542,12 +542,22 @@ export class WorldRenderer {
 
         if (!isWalkable(wx, wy)) continue;
 
-        // ~12% chance per candidate position
+        // ~10% chance per candidate = ~1-2 chests per chunk
         const roll = hash(wx, wy, CHEST_SEED) % 100;
-        if (roll >= 12) continue;
+        if (roll >= 10) continue;
 
         const tex = this.objectTextures.get('crystal2.png');
         if (!tex) continue;
+
+        // Glow circle behind the chest
+        const glow = new Graphics();
+        const glowX = tx * TILE_PX + TILE_PX / 2;
+        const glowY = ty * TILE_PX + TILE_PX / 2;
+        glow.circle(glowX, glowY, 20);
+        glow.fill({ color: 0xd4a017, alpha: 0.15 });
+        glow.circle(glowX, glowY, 12);
+        glow.fill({ color: 0xd4a017, alpha: 0.2 });
+        layer.addChild(glow);
 
         const spr = new Sprite(tex);
 
@@ -555,16 +565,14 @@ export class WorldRenderer {
         const offsetX = ((hash(wx, wy, CHEST_SEED + 200) % 9) - 4);
         const offsetY = ((hash(wx, wy, CHEST_SEED + 300) % 9) - 4);
 
-        spr.width = 32;
-        spr.height = 32;
-        spr.x = tx * TILE_PX + offsetX - 16 + TILE_PX / 2;
-        spr.y = ty * TILE_PX + offsetY - 16 + TILE_PX / 2;
+        spr.width = 36;
+        spr.height = 36;
+        spr.x = tx * TILE_PX + offsetX - 18 + TILE_PX / 2;
+        spr.y = ty * TILE_PX + offsetY - 18 + TILE_PX / 2;
 
-        // Golden tint to make chests visually distinct
-        const dist = Math.sqrt(wx * wx + wy * wy);
-        const fog = Math.max(0.12, 1.0 - dist / 250);
-        spr.tint = tintWithBrightness(0xd4a017, fog);
-        spr.alpha = 0.95;
+        // Bright golden tint — no distance fog so chests are always visible
+        spr.tint = 0xd4a017;
+        spr.alpha = 1.0;
 
         spr.label = `chest_${wx}_${wy}`;
 
