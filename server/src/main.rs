@@ -1,7 +1,9 @@
+use its_time_to_build_server::ecs::components::*;
+use its_time_to_build_server::ecs::world::create_world;
+use its_time_to_build_server::ecs::systems::{building, combat, crank, economy, spawn};
+use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
-use its_time_to_build_server::protocol::{
-    EconomySnapshot, GameStateUpdate, PlayerSnapshot, Vec2,
-};
+use its_time_to_build_server::protocol::*;
 use tokio::time::{interval, Duration};
 use tracing::info;
 
@@ -19,57 +21,219 @@ async fn main() {
 
     info!("Client connected — starting game loop at {} Hz", TICK_RATE_HZ);
 
-    // ── Initial player state ────────────────────────────────────────
-    let mut player_pos = Vec2 { x: 400.0, y: 300.0 };
-    let player_health: f32 = 100.0;
-    let player_max_health: f32 = 100.0;
-    let player_tokens: i64 = 50;
-    let player_torch_range: f32 = 120.0;
+    // ── Create ECS world and game state ──────────────────────────────
+    let (mut world, mut game_state) = create_world();
 
-    let mut tick: u64 = 0;
     let mut ticker = interval(TICK_DURATION);
+
+    // ── Per-tick player action tracking ──────────────────────────────
+    let mut player_attacking: bool;
+    let mut player_cranking: bool = false;
 
     loop {
         ticker.tick().await;
-        tick += 1;
+        game_state.tick += 1;
 
-        // ── Read all pending inputs ─────────────────────────────────
+        // Reset per-tick flags
+        player_attacking = false;
+
+        // ── 1. Process player input (movement + actions) ─────────────
         while let Ok(input) = server.input_rx.try_recv() {
-            // Apply movement (simple, no collision)
+            // Movement
             let mx = input.movement.x;
             let my = input.movement.y;
 
-            // Normalise diagonal movement
             let len = (mx * mx + my * my).sqrt();
             if len > 0.0 {
-                player_pos.x += (mx / len) * PLAYER_SPEED;
-                player_pos.y += (my / len) * PLAYER_SPEED;
+                for (_id, pos) in world.query_mut::<hecs::With<&mut Position, &Player>>() {
+                    pos.x += (mx / len) * PLAYER_SPEED;
+                    pos.y += (my / len) * PLAYER_SPEED;
+                }
+            }
+
+            // Actions
+            if let Some(action) = &input.action {
+                match action {
+                    PlayerAction::Attack => {
+                        player_attacking = true;
+                    }
+                    PlayerAction::CrankStart => {
+                        player_cranking = true;
+                    }
+                    PlayerAction::CrankStop => {
+                        player_cranking = false;
+                    }
+                    _ => {}
+                }
             }
         }
 
-        // ── Build state update ──────────────────────────────────────
-        let update = GameStateUpdate {
-            tick,
-            player: PlayerSnapshot {
-                position: player_pos,
-                health: player_health,
-                max_health: player_max_health,
-                tokens: player_tokens,
-                torch_range: player_torch_range,
-            },
-            entities_changed: vec![],
-            entities_removed: vec![],
-            fog_updates: vec![],
-            economy: EconomySnapshot {
-                balance: player_tokens,
-                income_per_sec: 0.0,
-                expenditure_per_sec: 0.0,
-            },
-            log_entries: vec![],
-            audio_triggers: vec![],
+        // ── Read player position for spawn system ────────────────────
+        let mut player_x: f32 = 0.0;
+        let mut player_y: f32 = 0.0;
+
+        for (_id, pos) in world.query_mut::<hecs::With<&Position, &Player>>() {
+            player_x = pos.x;
+            player_y = pos.y;
+        }
+
+        // ── 2. Rogue AI behavior ─────────────────────────────────────
+        rogue_ai::rogue_ai_system(&mut world);
+
+        // ── 3. Spawn system ──────────────────────────────────────────
+        spawn::spawn_system(&mut world, &game_state, player_x, player_y);
+
+        // ── 4. Combat system ─────────────────────────────────────────
+        let combat_result = combat::combat_system(&mut world, &mut game_state, player_attacking);
+
+        // Collect entity IDs of killed rogues before they were despawned
+        let entities_removed: Vec<EntityId> = combat_result
+            .killed_rogues
+            .iter()
+            .map(|(entity, _kind)| entity.to_bits().into())
+            .collect();
+
+        // ── 5. Building system ───────────────────────────────────────
+        let building_result = building::building_system(&mut world);
+
+        // ── 6. Economy system ────────────────────────────────────────
+        // Called after all mutable systems are done so we can pass &World
+        economy::economy_system(&world, &mut game_state);
+
+        // ── 7. Crank system ──────────────────────────────────────────
+        let crank_result = crank::crank_system(&mut game_state, player_cranking);
+
+        // ── 8. Collect log entries from system results ───────────────
+        let mut log_entries: Vec<LogEntry> = Vec::new();
+
+        for text in &combat_result.log_entries {
+            log_entries.push(LogEntry {
+                tick: game_state.tick,
+                text: text.clone(),
+                category: LogCategory::Combat,
+            });
+        }
+
+        for text in &building_result.log_entries {
+            log_entries.push(LogEntry {
+                tick: game_state.tick,
+                text: text.clone(),
+                category: LogCategory::Building,
+            });
+        }
+
+        if let Some(text) = &crank_result.log_message {
+            log_entries.push(LogEntry {
+                tick: game_state.tick,
+                text: text.clone(),
+                category: LogCategory::Economy,
+            });
+        }
+
+        // ── 9. Build entities_changed from ALL entity types ──────────
+        let mut entities_changed: Vec<EntityDelta> = Vec::new();
+
+        // Agents
+        for (id, (pos, name, state, tier, health, morale)) in world.query_mut::<hecs::With<
+            (
+                &Position,
+                &AgentName,
+                &AgentState,
+                &AgentTier,
+                &Health,
+                &AgentMorale,
+            ),
+            &Agent,
+        >>() {
+            let health_pct = if health.max > 0 {
+                health.current as f32 / health.max as f32
+            } else {
+                0.0
+            };
+
+            entities_changed.push(EntityDelta {
+                id: id.to_bits().into(),
+                kind: EntityKind::Agent,
+                position: Vec2 { x: pos.x, y: pos.y },
+                data: EntityData::Agent {
+                    name: name.name.clone(),
+                    state: state.state,
+                    tier: tier.tier,
+                    health_pct,
+                    morale_pct: morale.value,
+                },
+            });
+        }
+
+        // Buildings
+        for (id, (pos, building_type, progress, health)) in world
+            .query_mut::<hecs::With<(&Position, &BuildingType, &ConstructionProgress, &Health), &Building>>()
+        {
+            entities_changed.push(EntityDelta {
+                id: id.to_bits().into(),
+                kind: EntityKind::Building,
+                position: Vec2 { x: pos.x, y: pos.y },
+                data: EntityData::Building {
+                    building_type: building_type.kind,
+                    construction_pct: progress.current / progress.total,
+                    health_pct: health.current as f32 / health.max.max(1) as f32,
+                },
+            });
+        }
+
+        // Rogues
+        for (id, (pos, rogue_type, health)) in
+            world.query_mut::<hecs::With<(&Position, &RogueType, &Health), &Rogue>>()
+        {
+            entities_changed.push(EntityDelta {
+                id: id.to_bits().into(),
+                kind: EntityKind::Rogue,
+                position: Vec2 { x: pos.x, y: pos.y },
+                data: EntityData::Rogue {
+                    rogue_type: rogue_type.kind,
+                    health_pct: health.current as f32 / health.max.max(1) as f32,
+                },
+            });
+        }
+
+        // ── Query player entity for snapshot ─────────────────────────
+        let mut player_snapshot = PlayerSnapshot {
+            position: Vec2::default(),
+            health: 0.0,
+            max_health: 0.0,
+            tokens: game_state.economy.balance,
+            torch_range: 0.0,
         };
 
-        // ── Send to client ──────────────────────────────────────────
+        for (_id, (pos, health, torch)) in world
+            .query_mut::<hecs::With<(&Position, &Health, &TorchRange), &Player>>()
+        {
+            player_snapshot.position = Vec2 { x: pos.x, y: pos.y };
+            player_snapshot.health = health.current as f32;
+            player_snapshot.max_health = health.max as f32;
+            player_snapshot.torch_range = torch.radius;
+        }
+
+        // ── Collect audio triggers ───────────────────────────────────
+        let audio_triggers = combat_result.audio_events;
+
+        // ── 10. Build GameStateUpdate and send ───────────────────────
+        let update = GameStateUpdate {
+            tick: game_state.tick,
+            player: player_snapshot,
+            entities_changed,
+            entities_removed,
+            fog_updates: vec![],
+            economy: EconomySnapshot {
+                balance: game_state.economy.balance,
+                income_per_sec: game_state.economy.income_per_tick * TICK_RATE_HZ as f64,
+                expenditure_per_sec: game_state.economy.expenditure_per_tick * TICK_RATE_HZ as f64,
+            },
+            log_entries,
+            audio_triggers,
+        };
+
+        // ── Send to client ───────────────────────────────────────────
         server.send_state(&update);
     }
 }
