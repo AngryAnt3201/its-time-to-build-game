@@ -360,4 +360,26 @@ mod tests {
         assert_eq!(vibe.stars, 3);
         assert_eq!(vibe.model_lore_name, "Abyssal Architect");
     }
+
+    #[test]
+    fn vibe_config_varies_by_tier() {
+        let mut world = World::new();
+        let mut economy = make_economy(1000);
+
+        let apprentice =
+            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy).unwrap();
+        let architect =
+            recruit_agent(&mut world, AgentTierKind::Architect, 10.0, 0.0, &mut economy).unwrap();
+
+        let a_vibe = world.get::<&AgentVibeConfig>(apprentice).unwrap();
+        let arch_vibe = world.get::<&AgentVibeConfig>(architect).unwrap();
+
+        // Apprentice has fewer turns and higher error rate
+        assert!(a_vibe.max_turns < arch_vibe.max_turns);
+        assert!(a_vibe.error_chance_base > arch_vibe.error_chance_base);
+        assert!(a_vibe.stars < arch_vibe.stars);
+
+        // Apprentice burns more tokens when erroring
+        assert!(a_vibe.token_burn_rate > arch_vibe.token_burn_rate);
+    }
 }
