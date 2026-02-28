@@ -45,6 +45,12 @@ export interface AgentData {
   tier: AgentTierKind;
   health_pct: number;
   morale_pct: number;
+  stars: number;
+  turns_used: number;
+  max_turns: number;
+  model_lore_name: string;
+  xp: number;
+  level: number;
 }
 
 export interface BuildingData {
@@ -187,6 +193,15 @@ export interface EconomySnapshot {
   expenditure_per_sec: number;
 }
 
+// ── Debug snapshot ─────────────────────────────────────────────────
+
+export interface DebugSnapshot {
+  spawning_enabled: boolean;
+  god_mode: boolean;
+  phase: string;
+  crank_tier: string;
+}
+
 // ── Main game state update (Server -> Client) ─────────────────────
 
 export interface GameStateUpdate {
@@ -198,6 +213,7 @@ export interface GameStateUpdate {
   economy: EconomySnapshot;
   log_entries: LogEntry[];
   audio_triggers: AudioEvent[];
+  debug: DebugSnapshot;
 }
 
 // ── Client -> Server messages ──────────────────────────────────────
@@ -212,7 +228,17 @@ export type PlayerAction =
   | { PlaceBuilding: { building_type: BuildingTypeKind; x: number; y: number } }
   | "CrankStart"
   | "CrankStop"
-  | "RollbackAgent";
+  | "RollbackAgent"
+  // Debug actions
+  | { DebugSetTokens: { amount: number } }
+  | { DebugAddTokens: { amount: number } }
+  | "DebugToggleSpawning"
+  | "DebugClearRogues"
+  | { DebugSetPhase: { phase: string } }
+  | { DebugSetCrankTier: { tier: string } }
+  | "DebugToggleGodMode"
+  | { DebugSpawnRogue: { rogue_type: RogueTypeKind } }
+  | "DebugHealPlayer";
 
 export type TaskAssignment =
   | "Build"
