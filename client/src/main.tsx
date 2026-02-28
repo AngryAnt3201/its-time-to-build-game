@@ -17,6 +17,8 @@ import { Grimoire } from './ui/grimoire';
 import { DebugPanel } from './ui/debug-panel';
 import { BuildingPanel } from './ui/building-panel';
 import { Minimap } from './ui/minimap';
+import { HotbarTooltip } from './ui/hotbar-tooltip';
+import { ALL_BUILDINGS, TIER_NAMES, buildingTypeToId as buildingIdFromType } from './data/buildings';
 import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta, BuildingTypeKind } from './network/protocol';
 import { AudioManager } from './audio/manager';
 import { getProjectDir, getProjectInitFlag, setProjectInitFlag } from './utils/project-settings';
@@ -83,6 +85,7 @@ async function startGame() {
   const grimoire = new Grimoire();
   const debugPanel = new DebugPanel();
   const minimap = new Minimap();
+  const hotbarTooltip = new HotbarTooltip();
 
   // ── Persistent entity map (tracks buildings across ticks) ─────────
   const entityMap: Map<number, EntityDelta> = new Map();
@@ -284,6 +287,10 @@ async function startGame() {
     ghost.visible = true;
   };
 
+  buildHotbar.onOpenBrowser = () => {
+    buildMenu.open();
+  };
+
   // ── Debug panel callback ──────────────────────────────────────
   debugPanel.onAction = (action: PlayerAction) => {
     const input: PlayerInput = {
@@ -320,6 +327,43 @@ async function startGame() {
       const worldX = (mouseScreenX - worldContainer.x) / ZOOM;
       const worldY = (mouseScreenY - worldContainer.y) / ZOOM;
       buildMenu.updateGhostPosition(worldX, worldY);
+    }
+
+    // Hotbar tooltip hover tracking
+    const hotbarBounds = buildHotbar.container.getBounds();
+    const hLocalX = e.clientX - hotbarBounds.x;
+    const hLocalY = e.clientY - hotbarBounds.y;
+    const slotIdx = buildHotbar.getSlotAtPosition(hLocalX, hLocalY);
+
+    if (slotIdx >= 0) {
+      const entry = buildHotbar.getEntry(slotIdx);
+      if (entry) {
+        const buildingDef = ALL_BUILDINGS.find(b => b.type === entry.type);
+        const buildingId = buildingIdFromType(entry.type);
+        const tierLabel = TIER_NAMES[buildingDef?.tier ?? 0] ?? '';
+
+        // Determine status
+        let status = 'Available';
+        const unlocked = latestState?.project_manager?.unlocked_buildings ?? [];
+        if (unlocked.length > 0 && !unlocked.includes(buildingId)) {
+          status = 'Locked';
+        }
+
+        // Position above the slot center
+        const slotScreenX = hotbarBounds.x + 8 + slotIdx * (64 + 4) + 32; // PADDING + idx * (SLOT_W + SLOT_GAP) + SLOT_W/2
+        const slotScreenY = hotbarBounds.y + 18; // slot Y offset
+
+        hotbarTooltip.show(
+          slotScreenX, slotScreenY,
+          buildingDef?.name ?? entry.name,
+          entry.cost,
+          buildingDef?.description ?? '',
+          tierLabel,
+          status,
+        );
+      }
+    } else {
+      hotbarTooltip.hide();
     }
   });
 
@@ -359,6 +403,7 @@ async function startGame() {
   const justPressed: Set<string> = new Set();
 
   window.addEventListener('keydown', (e: KeyboardEvent) => {
+    hotbarTooltip.hide();
     const key = e.key.toLowerCase();
 
     // ── Debug panel key handling (backtick toggles) ───────────────
