@@ -140,25 +140,28 @@ pub fn combat_system(
     }
 
     // ── Rogues attack player (proximity-based) ──────────────────────
-    let player_threat_range_sq: f32 = 20.0 * 20.0;
+    // Skip all rogue-vs-player damage when god mode is active.
+    if !game_state.god_mode {
+        let player_threat_range_sq: f32 = 20.0 * 20.0;
 
-    for &(_rogue_entity, ref rogue_pos, rogue_kind) in &rogues {
-        if distance_sq(&player_pos, rogue_pos) > player_threat_range_sq {
-            continue;
-        }
+        for &(_rogue_entity, ref rogue_pos, rogue_kind) in &rogues {
+            if distance_sq(&player_pos, rogue_pos) > player_threat_range_sq {
+                continue;
+            }
 
-        // TokenDrain special: drain 1 token from economy instead of HP.
-        if rogue_kind == RogueTypeKind::TokenDrain {
-            game_state.economy.balance = (game_state.economy.balance - 1).max(0);
-            continue;
-        }
+            // TokenDrain special: drain 1 token from economy instead of HP.
+            if rogue_kind == RogueTypeKind::TokenDrain {
+                game_state.economy.balance = (game_state.economy.balance - 1).max(0);
+                continue;
+            }
 
-        let dmg = rogue_damage_to_player(rogue_kind);
-        if dmg > 0 {
-            if let Some(pe) = player_entity {
-                if let Ok(mut health) = world.get::<&mut Health>(pe) {
-                    health.current -= dmg;
-                    result.player_damaged = true;
+            let dmg = rogue_damage_to_player(rogue_kind);
+            if dmg > 0 {
+                if let Some(pe) = player_entity {
+                    if let Ok(mut health) = world.get::<&mut Health>(pe) {
+                        health.current -= dmg;
+                        result.player_damaged = true;
+                    }
                 }
             }
         }

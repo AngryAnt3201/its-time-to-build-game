@@ -93,9 +93,10 @@ const footerStyle = new TextStyle({
 const PANEL_WIDTH = 520;
 const PANEL_HEIGHT = 420;
 const CARD_W = 110;
-const CARD_H = 72;
+const CARD_H = 88;
 const CARD_GAP = 8;
 const COLS = 4;
+const ICON_SIZE = 24;
 
 const HEADER_HEIGHT = 40;
 const FOOTER_HEIGHT = 30;
@@ -466,36 +467,52 @@ export class BuildMenu {
     bg.stroke({ color: 0x2a2418, alpha: 1, width: 1 });
     card.addChild(bg);
 
-    // Building name
-    const nameText = new Text({
-      text: building.name,
-      style: isLocked ? cardLockedNameStyle : cardNameStyle,
-    });
-    nameText.anchor.set(0.5, 0);
-    nameText.x = CARD_W / 2;
-    nameText.y = 8;
-    card.addChild(nameText);
+    // Icon placeholder (dashed border box)
+    const iconPlaceholder = new Graphics();
+    const iconX = Math.round((CARD_W - ICON_SIZE) / 2);
+    const iconY = 6;
+    iconPlaceholder.roundRect(iconX, iconY, ICON_SIZE, ICON_SIZE, 2);
+    iconPlaceholder.stroke({ color: isLocked ? 0x333333 : 0x3a3020, alpha: 0.5, width: 1 });
+    card.addChild(iconPlaceholder);
 
-    // Cost
-    const costText = new Text({
-      text: `${building.cost}\u25C6`,
-      style: isLocked ? cardLockedCostStyle : cardCostStyle,
-    });
-    costText.anchor.set(0.5, 0);
-    costText.x = CARD_W / 2;
-    costText.y = isLocked ? 36 : 40;
-    card.addChild(costText);
-
-    // Locked label
     if (isLocked) {
+      // Locked: show "????" and [LOCKED]
+      const hiddenText = new Text({
+        text: '????',
+        style: cardLockedNameStyle,
+      });
+      hiddenText.anchor.set(0.5, 0);
+      hiddenText.x = CARD_W / 2;
+      hiddenText.y = 34;
+      card.addChild(hiddenText);
+
       const lockedText = new Text({
         text: '[LOCKED]',
         style: cardLockedLabelStyle,
       });
       lockedText.anchor.set(0.5, 0);
       lockedText.x = CARD_W / 2;
-      lockedText.y = 54;
+      lockedText.y = 52;
       card.addChild(lockedText);
+    } else {
+      // Unlocked: show name + cost
+      const nameText = new Text({
+        text: building.name,
+        style: cardNameStyle,
+      });
+      nameText.anchor.set(0.5, 0);
+      nameText.x = CARD_W / 2;
+      nameText.y = 34;
+      card.addChild(nameText);
+
+      const costText = new Text({
+        text: `${building.cost}\u25C6`,
+        style: cardCostStyle,
+      });
+      costText.anchor.set(0.5, 0);
+      costText.x = CARD_W / 2;
+      costText.y = 56;
+      card.addChild(costText);
     }
 
     return card;

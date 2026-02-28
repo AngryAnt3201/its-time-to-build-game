@@ -56,11 +56,11 @@ export interface HotbarEntry {
 const DEFAULT_HOTBAR: HotbarEntry[] = [
   { type: 'Pylon',         name: 'Pylon',    cost: 30,  key: '1' },
   { type: 'ComputeFarm',   name: 'C.Farm',   cost: 80,  key: '2' },
-  { type: 'TodoApp',       name: 'Todo',     cost: 15,  key: '3' },
-  { type: 'Calculator',    name: 'Calc',     cost: 20,  key: '4' },
-  { type: 'LandingPage',   name: 'Landing',  cost: 25,  key: '5' },
-  { type: 'PortfolioSite', name: 'Portfio',  cost: 30,  key: '6' },
-  { type: 'PomodoroTimer', name: 'Pomod.',   cost: 20,  key: '7' },
+  { type: 'TodoApp',       name: 'Todo',     cost: 50,  key: '3' },
+  { type: 'Calculator',    name: 'Calc',     cost: 60,  key: '4' },
+  { type: 'LandingPage',   name: 'Landing',  cost: 40,  key: '5' },
+  { type: 'WeatherDashboard', name: 'Weather', cost: 120, key: '6' },
+  { type: 'ChatApp',       name: 'Chat',     cost: 150, key: '7' },
 ];
 
 // ── Corner brackets ─────────────────────────────────────────────────

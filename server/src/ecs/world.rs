@@ -2,6 +2,8 @@ use hecs::World;
 
 use crate::protocol::{AgentStateKind, AgentTierKind, TaskAssignment};
 
+use crate::game::upgrades::UpgradeState;
+
 use super::components::{
     Agent, AgentMorale, AgentName, AgentPersonality, AgentState, AgentStats, AgentTier, AgentXP,
     Assignment, CombatPower, CrankState, CrankTier, CarryCapacity, GamePhase, GameState, Health,
@@ -91,6 +93,9 @@ pub fn create_world() -> (World, GameState) {
         },
         cascade_active: false,
         city_reached_tick: None,
+        upgrades: UpgradeState::new(),
+        spawning_enabled: true,
+        god_mode: false,
     };
 
     (world, game_state)

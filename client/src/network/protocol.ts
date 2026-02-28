@@ -91,50 +91,20 @@ export type BuildingTypeKind =
   // Infrastructure
   | "Pylon"
   | "ComputeFarm"
-  | "Barracks"
-  | "ResearchLab"
-  | "Armory"
   // Tier 1
   | "TodoApp"
   | "Calculator"
   | "LandingPage"
-  | "PortfolioSite"
-  | "PomodoroTimer"
-  | "WeatherApp"
-  | "ColourPickerTool"
   // Tier 2
-  | "RestApi"
-  | "AuthenticationSystem"
-  | "Database"
-  | "AdminDashboard"
-  | "SearchBar"
-  | "FormWithValidation"
-  | "MarkdownEditor"
-  | "BudgetTracker"
+  | "WeatherDashboard"
+  | "ChatApp"
+  | "KanbanBoard"
   // Tier 3
-  | "CiCdPipeline"
-  | "UnitTestSuite"
-  | "CliTool"
-  | "BrowserExtension"
-  | "RecommendationEngine"
-  | "NotificationSystem"
-  | "RateLimiter"
-  | "OauthIntegration"
-  | "WebsocketServer"
+  | "EcommerceStore"
+  | "AiImageGenerator"
+  | "ApiDashboard"
   // Tier 4
-  | "MachineLearningModel"
-  | "VectorDatabase"
-  | "GraphqlApi"
-  | "TransformerModel"
-  | "RagPipeline"
-  | "AutonomousAgentFramework"
-  // Secret
-  | "WordleClone"
-  | "NftMarketplace"
-  | "Blockchain"
-  | "AnotherTodoApp"
-  | "HackerNewsClone"
-  | "MyFirstPortfolio";
+  | "Blockchain";
 
 // ── Rogue types ────────────────────────────────────────────────────
 
@@ -209,6 +179,7 @@ export interface ProjectManagerState {
   initialized: boolean;
   unlocked_buildings: string[];
   building_statuses: Record<string, string>;
+  agent_assignments: Record<string, number[]>;
 }
 
 // ── Main game state update (Server -> Client) ─────────────────────

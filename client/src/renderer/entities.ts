@@ -1,5 +1,5 @@
-import { Container, Graphics, Text, TextStyle } from 'pixi.js';
-import type { EntityDelta, AgentStateKind, RogueTypeKind } from '../network/protocol';
+import { Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
+import type { EntityDelta, AgentStateKind, AgentTierKind, RogueTypeKind } from '../network/protocol';
 
 // ── Internal sprite type ────────────────────────────────────────────
 
@@ -7,6 +7,11 @@ interface EntitySprite {
   container: Container;
   graphic: Graphics;
   label: Text;
+  /** Sprite used for rogue skull icons (loaded async). */
+  iconSprite: Sprite | null;
+  /** Health bar graphics for rogues. */
+  healthBarBg: Graphics | null;
+  healthBarFill: Graphics | null;
 }
 
 // ── Color maps ──────────────────────────────────────────────────────
@@ -34,20 +39,46 @@ const ROGUE_TYPE_COLORS: Record<RogueTypeKind, number> = {
 const ITEM_COLOR = 0xffdd44;
 const BUILDING_COLOR = 0xd4a017;
 
+// ── Agent tier icon mapping ────────────────────────────────────────
+
+const AGENT_TIER_ICONS: Record<AgentTierKind, string> = {
+  Apprentice: 'agent_1.png',
+  Journeyman: 'agent_2.png',
+  Artisan: 'agent_3.png',
+  Architect: 'agent_4.png',
+};
+
+// ── Rogue level mapping ─────────────────────────────────────────────
+// Level 1 (weakest): Swarm, TokenDrain
+// Level 2 (medium): Corruptor, Looper, Mimic
+// Level 3 (strongest): Assassin, Architect
+
+const ROGUE_LEVEL: Record<RogueTypeKind, 1 | 2 | 3> = {
+  Swarm: 1,
+  TokenDrain: 1,
+  Corruptor: 2,
+  Looper: 2,
+  Mimic: 2,
+  Assassin: 3,
+  Architect: 3,
+};
+
+// ── Health bar config for enemies ────────────────────────────────────
+
+const ENEMY_BAR_W = 20;
+const ENEMY_BAR_H = 3;
+const ENEMY_BAR_Y_OFFSET = -16; // above the skull icon
+
 // ── Label style helper ──────────────────────────────────────────────
+// Render at 3x resolution to match WORLD_ZOOM so labels stay crisp.
+const LABEL_RES = 3;
 
 function makeLabelStyle(color: number): TextStyle {
   return new TextStyle({
     fontFamily: '"IBM Plex Mono", monospace',
-    fontSize: 10,
+    fontSize: 7 * LABEL_RES,
     fill: color,
   });
-}
-
-// ── Hex color to CSS string ─────────────────────────────────────────
-
-function hexToString(color: number): string {
-  return `#${color.toString(16).padStart(6, '0')}`;
 }
 
 // ── Shape drawing helpers ───────────────────────────────────────────
@@ -60,10 +91,8 @@ function drawCircle(gfx: Graphics, color: number, radius: number): void {
 function drawSquare(gfx: Graphics, color: number, size: number, outline: boolean, fillPct: number): void {
   const half = size / 2;
   if (outline) {
-    // Draw outline
     gfx.rect(-half, -half, size, size);
     gfx.stroke({ color, width: 2 });
-    // Draw progress fill from bottom up
     if (fillPct > 0) {
       const fillHeight = size * fillPct;
       gfx.rect(-half, half - fillHeight, size, fillHeight);
@@ -73,15 +102,6 @@ function drawSquare(gfx: Graphics, color: number, size: number, outline: boolean
     gfx.rect(-half, -half, size, size);
     gfx.fill(color);
   }
-}
-
-function drawDiamond(gfx: Graphics, color: number, radius: number): void {
-  gfx.moveTo(0, -radius);
-  gfx.lineTo(radius, 0);
-  gfx.lineTo(0, radius);
-  gfx.lineTo(-radius, 0);
-  gfx.closePath();
-  gfx.fill(color);
 }
 
 function drawStar(gfx: Graphics, color: number, outerRadius: number): void {
@@ -101,24 +121,66 @@ function drawStar(gfx: Graphics, color: number, outerRadius: number): void {
 
 // ── EntityRenderer ──────────────────────────────────────────────────
 
-/**
- * Renders game entities (agents, buildings, rogues, items) as
- * color-coded placeholder geometric shapes.
- */
 export class EntityRenderer {
   readonly container: Container;
   private sprites: Map<number, EntitySprite> = new Map();
 
+  // Cached skull textures (loaded once)
+  private skullTextures: Map<number, Texture> = new Map();
+  private skullsLoaded = false;
+
+  // Cached agent tier textures (loaded once)
+  private agentTextures: Map<AgentTierKind, Texture> = new Map();
+  private agentIconsLoaded = false;
+
   constructor() {
     this.container = new Container();
     this.container.label = 'entities';
+    this.loadSkullIcons();
+    this.loadAgentIcons();
+  }
+
+  // ── Load skull icon textures ──────────────────────────────────────
+
+  private async loadSkullIcons(): Promise<void> {
+    try {
+      const [skull1, skull2, skull3] = await Promise.all([
+        Assets.load<Texture>('/icons/enemies/enemy_level_1.png'),
+        Assets.load<Texture>('/icons/enemies/enemy_level_2.png'),
+        Assets.load<Texture>('/icons/enemies/enemy_level_3.png'),
+      ]);
+
+      skull1.source.scaleMode = 'nearest';
+      skull2.source.scaleMode = 'nearest';
+      skull3.source.scaleMode = 'nearest';
+
+      this.skullTextures.set(1, skull1);
+      this.skullTextures.set(2, skull2);
+      this.skullTextures.set(3, skull3);
+      this.skullsLoaded = true;
+    } catch (err) {
+      console.warn('[entities] Failed to load skull icons:', err);
+    }
+  }
+
+  private async loadAgentIcons(): Promise<void> {
+    try {
+      const tiers: AgentTierKind[] = ['Apprentice', 'Journeyman', 'Artisan', 'Architect'];
+      const textures = await Promise.all(
+        tiers.map(tier => Assets.load<Texture>(`/icons/agents/${AGENT_TIER_ICONS[tier]}`)),
+      );
+      for (let i = 0; i < tiers.length; i++) {
+        textures[i].source.scaleMode = 'nearest';
+        this.agentTextures.set(tiers[i], textures[i]);
+      }
+      this.agentIconsLoaded = true;
+    } catch (err) {
+      console.warn('[entities] Failed to load agent icons:', err);
+    }
   }
 
   /**
    * Update visible entities.
-   *
-   * @param changed - Entities that have been created or changed this tick
-   * @param removed - Entity IDs that have been despawned
    */
   update(changed: EntityDelta[], removed: number[]): void {
     // Remove despawned entities
@@ -126,9 +188,7 @@ export class EntityRenderer {
       const sprite = this.sprites.get(id);
       if (sprite) {
         this.container.removeChild(sprite.container);
-        sprite.graphic.destroy();
-        sprite.label.destroy();
-        sprite.container.destroy();
+        sprite.container.destroy({ children: true });
         this.sprites.delete(id);
       }
     }
@@ -162,15 +222,10 @@ export class EntityRenderer {
     }
   }
 
-  /**
-   * Remove all entity sprites and clear the map.
-   */
   clear(): void {
     for (const sprite of this.sprites.values()) {
       this.container.removeChild(sprite.container);
-      sprite.graphic.destroy();
-      sprite.label.destroy();
-      sprite.container.destroy();
+      sprite.container.destroy({ children: true });
     }
     this.sprites.clear();
   }
@@ -185,33 +240,56 @@ export class EntityRenderer {
       style: makeLabelStyle(0xffffff),
     });
     label.anchor.set(0.5, 0);
-    label.y = 10; // Position label below the shape
+    label.scale.set(1 / LABEL_RES);
+    label.y = 10;
 
     container.addChild(graphic);
     container.addChild(label);
 
-    return { container, graphic, label };
+    return { container, graphic, label, iconSprite: null, healthBarBg: null, healthBarFill: null };
   }
 
   private drawAgent(
     sprite: EntitySprite,
-    agent: { name: string; state: AgentStateKind; morale_pct: number },
+    agent: { name: string; state: AgentStateKind; tier: AgentTierKind; morale_pct: number },
   ): void {
     const color = AGENT_STATE_COLORS[agent.state];
-    const radius = 6;
 
-    // Draw main circle
-    drawCircle(sprite.graphic, color, radius);
+    // Agent tier icon sprite
+    if (this.agentIconsLoaded) {
+      const tex = this.agentTextures.get(agent.tier);
+      if (tex) {
+        if (!sprite.iconSprite) {
+          sprite.iconSprite = new Sprite(tex);
+          sprite.iconSprite.width = 16;
+          sprite.iconSprite.height = 16;
+          sprite.iconSprite.anchor.set(0.5, 0.5);
+          sprite.container.addChild(sprite.iconSprite);
+        } else {
+          sprite.iconSprite.texture = tex;
+          sprite.iconSprite.visible = true;
+        }
+      }
+    } else {
+      // Fallback: draw circle if icons haven't loaded yet
+      drawCircle(sprite.graphic, color, 6);
+    }
 
-    // Low morale indicator: red ring
+    // State-colored ring around icon
+    sprite.graphic.circle(0, 0, 10);
+    sprite.graphic.stroke({ color, width: 1.5 });
+
     if (agent.morale_pct < 0.3) {
-      sprite.graphic.circle(0, 0, radius + 2);
+      sprite.graphic.circle(0, 0, 12);
       sprite.graphic.stroke({ color: 0xff0000, width: 1.5 });
     }
 
-    // Update label
-    sprite.label.text = `[${agent.name}]`;
+    sprite.label.text = agent.name;
     sprite.label.style = makeLabelStyle(color);
+
+    // Clean up rogue-specific elements (health bars)
+    if (sprite.healthBarBg) sprite.healthBarBg.clear();
+    if (sprite.healthBarFill) sprite.healthBarFill.clear();
   }
 
   private drawBuilding(
@@ -229,22 +307,81 @@ export class EntityRenderer {
       isComplete ? 1.0 : building.construction_pct,
     );
 
-    // Update label
     sprite.label.text = building.building_type;
     sprite.label.style = makeLabelStyle(BUILDING_COLOR);
+
+    this.cleanRogueElements(sprite);
   }
 
   private drawRogue(
     sprite: EntitySprite,
-    rogue: { rogue_type: RogueTypeKind },
+    rogue: { rogue_type: RogueTypeKind; health_pct: number },
   ): void {
+    const level = ROGUE_LEVEL[rogue.rogue_type];
     const color = ROGUE_TYPE_COLORS[rogue.rogue_type];
-    const radius = 7;
 
-    drawDiamond(sprite.graphic, color, radius);
+    // ── Skull icon sprite ─────────────────────────────────────────
+    if (this.skullsLoaded) {
+      const tex = this.skullTextures.get(level);
+      if (tex) {
+        if (!sprite.iconSprite) {
+          sprite.iconSprite = new Sprite(tex);
+          sprite.iconSprite.width = 16;
+          sprite.iconSprite.height = 16;
+          sprite.iconSprite.anchor.set(0.5, 0.5);
+          sprite.container.addChild(sprite.iconSprite);
+        } else {
+          sprite.iconSprite.texture = tex;
+          sprite.iconSprite.visible = true;
+        }
+      }
+    } else {
+      // Fallback: draw diamond if skulls haven't loaded yet
+      sprite.graphic.moveTo(0, -7);
+      sprite.graphic.lineTo(7, 0);
+      sprite.graphic.lineTo(0, 7);
+      sprite.graphic.lineTo(-7, 0);
+      sprite.graphic.closePath();
+      sprite.graphic.fill(color);
+    }
 
-    // Update label
-    sprite.label.text = rogue.rogue_type;
+    // ── Health bar above enemy ────────────────────────────────────
+    if (!sprite.healthBarBg) {
+      sprite.healthBarBg = new Graphics();
+      sprite.healthBarBg.y = ENEMY_BAR_Y_OFFSET;
+      sprite.container.addChild(sprite.healthBarBg);
+    }
+    if (!sprite.healthBarFill) {
+      sprite.healthBarFill = new Graphics();
+      sprite.healthBarFill.y = ENEMY_BAR_Y_OFFSET;
+      sprite.container.addChild(sprite.healthBarFill);
+    }
+
+    // Draw health bar background
+    sprite.healthBarBg.clear();
+    sprite.healthBarBg.rect(-ENEMY_BAR_W / 2, 0, ENEMY_BAR_W, ENEMY_BAR_H);
+    sprite.healthBarBg.fill({ color: 0x1a1210, alpha: 0.9 });
+    sprite.healthBarBg.rect(-ENEMY_BAR_W / 2, 0, ENEMY_BAR_W, ENEMY_BAR_H);
+    sprite.healthBarBg.stroke({ color: 0x3a2a1a, alpha: 0.6, width: 0.5 });
+
+    // Draw health bar fill
+    const pct = Math.max(0, Math.min(1, rogue.health_pct));
+    const fillW = Math.round(pct * ENEMY_BAR_W);
+    sprite.healthBarFill.clear();
+    if (fillW > 0) {
+      // Color based on health percentage
+      let barColor: number;
+      if (pct > 0.6) barColor = 0xcc4444;
+      else if (pct > 0.3) barColor = 0xcc6644;
+      else barColor = 0x882222;
+
+      sprite.healthBarFill.rect(-ENEMY_BAR_W / 2, 0, fillW, ENEMY_BAR_H);
+      sprite.healthBarFill.fill(barColor);
+    }
+
+    // ── Label with level indicator ────────────────────────────────
+    const levelStars = '★'.repeat(level);
+    sprite.label.text = `${levelStars} ${rogue.rogue_type}`;
     sprite.label.style = makeLabelStyle(color);
   }
 
@@ -254,8 +391,22 @@ export class EntityRenderer {
   ): void {
     drawStar(sprite.graphic, ITEM_COLOR, 6);
 
-    // Update label
     sprite.label.text = item.item_type;
     sprite.label.style = makeLabelStyle(ITEM_COLOR);
+
+    this.cleanRogueElements(sprite);
+  }
+
+  /** Remove rogue-specific elements when entity changes type. */
+  private cleanRogueElements(sprite: EntitySprite): void {
+    if (sprite.iconSprite) {
+      sprite.iconSprite.visible = false;
+    }
+    if (sprite.healthBarBg) {
+      sprite.healthBarBg.clear();
+    }
+    if (sprite.healthBarFill) {
+      sprite.healthBarFill.clear();
+    }
   }
 }

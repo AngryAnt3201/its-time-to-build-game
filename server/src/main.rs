@@ -1,6 +1,6 @@
 use its_time_to_build_server::ecs::components::*;
 use its_time_to_build_server::ecs::world::create_world;
-use its_time_to_build_server::ecs::systems::{agent_tick, agent_wander, building, combat, crank, economy, spawn};
+use its_time_to_build_server::ecs::systems::{agent_tick, agent_wander, building, combat, crank, economy, placement, spawn};
 use its_time_to_build_server::game::{agents, collision};
 use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
@@ -290,14 +290,78 @@ async fn main() {
                         }
                     }
                     PlayerAction::AssignAgentToProject { agent_id, building_id } => {
-                        project_manager.assign_agent(building_id, *agent_id);
-                        debug_log_entries.push(format!(
-                            "[project] agent {} assigned to {}",
-                            agent_id, building_id
-                        ));
+                        // Convert agent_id (u64) to hecs::Entity
+                        let Some(agent_entity) = hecs::Entity::from_bits(*agent_id) else {
+                            debug_log_entries.push(format!(
+                                "[project] invalid agent entity id {}",
+                                agent_id
+                            ));
+                            continue;
+                        };
+
+                        // Validate agent exists and is Idle
+                        let agent_ok = world
+                            .get::<&AgentState>(agent_entity)
+                            .map(|s| s.state == AgentStateKind::Idle)
+                            .unwrap_or(false);
+
+                        if !agent_ok {
+                            debug_log_entries.push(format!(
+                                "[project] agent {} not idle or not found",
+                                agent_id
+                            ));
+                        } else if !project_manager.assign_agent(building_id, *agent_id) {
+                            debug_log_entries.push(format!(
+                                "[project] cannot assign agent {} to {} (full or duplicate)",
+                                agent_id, building_id
+                            ));
+                        } else {
+                            // Find the building entity position by matching building_id
+                            let mut building_pos: Option<(f32, f32)> = None;
+                            for (_e, (pos, bt)) in world.query::<hecs::With<(&Position, &BuildingType), &Building>>().iter() {
+                                let type_name = format!("{:?}", bt.kind);
+                                if let Some(bid) = project::ProjectManager::building_type_to_id(&type_name) {
+                                    if bid == *building_id {
+                                        building_pos = Some((pos.x, pos.y));
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Set agent to Building state
+                            let _ = agents::assign_task(&mut world, agent_entity, TaskAssignment::Build);
+
+                            // Update wander state to mill around the building
+                            if let Some((bx, by)) = building_pos {
+                                if let Ok(mut wander) = world.get::<&mut WanderState>(agent_entity) {
+                                    wander.home_x = bx;
+                                    wander.home_y = by;
+                                    wander.waypoint_x = bx + (rand::random::<f32>() - 0.5) * 40.0;
+                                    wander.waypoint_y = by + (rand::random::<f32>() - 0.5) * 40.0;
+                                    wander.wander_radius = 20.0;
+                                    wander.pause_remaining = 0;
+                                }
+                            }
+
+                            debug_log_entries.push(format!(
+                                "[project] agent {} assigned to {}",
+                                agent_id, building_id
+                            ));
+                        }
                     }
                     PlayerAction::UnassignAgentFromProject { agent_id, building_id } => {
                         project_manager.unassign_agent(building_id, *agent_id);
+
+                        // Reset agent to Idle state
+                        if let Some(agent_entity) = hecs::Entity::from_bits(*agent_id) {
+                            let _ = agents::assign_task(&mut world, agent_entity, TaskAssignment::Idle);
+
+                            // Reset wander radius to default
+                            if let Ok(mut wander) = world.get::<&mut WanderState>(agent_entity) {
+                                wander.wander_radius = 120.0;
+                            }
+                        }
+
                         debug_log_entries.push(format!(
                             "[project] agent {} unassigned from {}",
                             agent_id, building_id
@@ -314,6 +378,17 @@ async fn main() {
                     PlayerAction::UnlockBuilding { building_id } => {
                         project_manager.unlock_building(building_id);
                         debug_log_entries.push(format!("[project] building {} unlocked", building_id));
+                    }
+
+                    PlayerAction::PlaceBuilding { building_type, x, y } => {
+                        match placement::place_building(&mut world, *building_type, *x, *y, &mut game_state.economy) {
+                            Ok(_entity) => {
+                                debug_log_entries.push(format!("[build] placed {:?} at ({:.0}, {:.0})", building_type, x, y));
+                            }
+                            Err(e) => {
+                                debug_log_entries.push(format!("[build] failed: {}", e));
+                            }
+                        }
                     }
 
                     _ => {}
@@ -544,6 +619,7 @@ async fn main() {
                     };
                     (k.clone(), status_str)
                 }).collect(),
+                agent_assignments: project_manager.agent_assignments.clone(),
             }),
         };
 

@@ -34,8 +34,8 @@ pub struct ProjectManager {
     pub initialized: bool,
     /// Per-building project status.
     pub statuses: HashMap<String, ProjectStatus>,
-    /// Stub: mapping from building id to a list of assigned agent entity ids.
-    agent_assignments: HashMap<String, Vec<u64>>,
+    /// Mapping from building id to a list of assigned agent entity ids.
+    pub agent_assignments: HashMap<String, Vec<u64>>,
 }
 
 impl ProjectManager {
@@ -286,12 +286,22 @@ impl ProjectManager {
     // ── Agent assignment stubs ──────────────────────────────────────
 
     /// Assign an agent (by entity id) to a building project.
-    pub fn assign_agent(&mut self, building_id: &str, agent_id: u64) {
-        self.agent_assignments
+    /// Returns false if the building already has 3 agents or agent is already assigned.
+    pub fn assign_agent(&mut self, building_id: &str, agent_id: u64) -> bool {
+        let agents = self.agent_assignments
             .entry(building_id.to_string())
-            .or_default()
-            .push(agent_id);
+            .or_default();
+        if agents.len() >= 3 {
+            warn!("Building {} already has 3 agents assigned", building_id);
+            return false;
+        }
+        if agents.contains(&agent_id) {
+            warn!("Agent {} already assigned to {}", agent_id, building_id);
+            return false;
+        }
+        agents.push(agent_id);
         info!("Agent {} assigned to {}", agent_id, building_id);
+        true
     }
 
     /// Remove an agent assignment from a building project.

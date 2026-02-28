@@ -34,6 +34,13 @@ pub fn spawn_system(
     player_x: f32,
     player_y: f32,
 ) -> SpawnResult {
+    // ── If spawning is disabled via debug, skip all spawning ──────────
+    if !game_state.spawning_enabled {
+        return SpawnResult {
+            log_entries: Vec::new(),
+        };
+    }
+
     // ── If cascade is active, use cascade spawning ────────────────────
     if game_state.cascade_active {
         return cascade_spawn(world, game_state, player_x, player_y);
@@ -201,8 +208,8 @@ fn cascade_spawn(
     SpawnResult { log_entries }
 }
 
-/// Helper: spawns a single rogue entity of the given type at the given position.
-fn spawn_rogue(world: &mut World, x: f32, y: f32, rogue_kind: RogueTypeKind) {
+/// Spawns a single rogue entity of the given type at the given position.
+pub fn spawn_rogue(world: &mut World, x: f32, y: f32, rogue_kind: RogueTypeKind) {
     // ── HP and damage by type ─────────────────────────────────────────
     let (hp, _damage) = match rogue_kind {
         RogueTypeKind::Swarm => (15, 3),

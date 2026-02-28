@@ -31,55 +31,33 @@ pub enum CardVariant {
 
 fn hut_buildings() -> &'static [BuildingTypeKind] {
     &[
+        BuildingTypeKind::Pylon,
+        BuildingTypeKind::ComputeFarm,
         BuildingTypeKind::TodoApp,
         BuildingTypeKind::Calculator,
         BuildingTypeKind::LandingPage,
-        BuildingTypeKind::PortfolioSite,
-        BuildingTypeKind::PomodoroTimer,
-        BuildingTypeKind::WeatherApp,
-        BuildingTypeKind::ColourPickerTool,
-        BuildingTypeKind::Pylon,
     ]
 }
 
 fn outpost_buildings() -> &'static [BuildingTypeKind] {
     &[
-        BuildingTypeKind::RestApi,
-        BuildingTypeKind::AuthenticationSystem,
-        BuildingTypeKind::Database,
-        BuildingTypeKind::AdminDashboard,
-        BuildingTypeKind::SearchBar,
-        BuildingTypeKind::FormWithValidation,
-        BuildingTypeKind::MarkdownEditor,
-        BuildingTypeKind::BudgetTracker,
-        BuildingTypeKind::ComputeFarm,
-        BuildingTypeKind::Barracks,
+        BuildingTypeKind::WeatherDashboard,
+        BuildingTypeKind::ChatApp,
+        BuildingTypeKind::KanbanBoard,
     ]
 }
 
 fn village_buildings() -> &'static [BuildingTypeKind] {
     &[
-        BuildingTypeKind::CiCdPipeline,
-        BuildingTypeKind::UnitTestSuite,
-        BuildingTypeKind::CliTool,
-        BuildingTypeKind::BrowserExtension,
-        BuildingTypeKind::RecommendationEngine,
-        BuildingTypeKind::NotificationSystem,
-        BuildingTypeKind::RateLimiter,
-        BuildingTypeKind::OauthIntegration,
-        BuildingTypeKind::WebsocketServer,
-        BuildingTypeKind::ResearchLab,
+        BuildingTypeKind::EcommerceStore,
+        BuildingTypeKind::AiImageGenerator,
+        BuildingTypeKind::ApiDashboard,
     ]
 }
 
 fn network_buildings() -> &'static [BuildingTypeKind] {
     &[
-        BuildingTypeKind::MachineLearningModel,
-        BuildingTypeKind::VectorDatabase,
-        BuildingTypeKind::GraphqlApi,
-        BuildingTypeKind::TransformerModel,
-        BuildingTypeKind::RagPipeline,
-        BuildingTypeKind::AutonomousAgentFramework,
+        BuildingTypeKind::Blockchain,
     ]
 }
 

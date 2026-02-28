@@ -55,12 +55,12 @@ pub fn economy_system(world: &World, game_state: &mut GameState) {
         }
 
         let income = match building_type.kind {
-            BuildingTypeKind::TodoApp => 0.02,
-            BuildingTypeKind::PortfolioSite => 0.05,
             BuildingTypeKind::ComputeFarm => 0.5,
-            BuildingTypeKind::RestApi => 0.1,
-            BuildingTypeKind::MachineLearningModel => 1.0,
-            BuildingTypeKind::TransformerModel => 3.0,
+            BuildingTypeKind::TodoApp => 0.02,
+            BuildingTypeKind::WeatherDashboard => 0.1,
+            BuildingTypeKind::EcommerceStore => 0.3,
+            BuildingTypeKind::AiImageGenerator => 0.25,
+            BuildingTypeKind::Blockchain => 1.0,
             _ => 0.0,
         };
 

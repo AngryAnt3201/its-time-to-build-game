@@ -1,21 +1,52 @@
 import { Container, Graphics } from 'pixi.js';
 
 /**
- * Client-side lighting renderer.
+ * Client-side fog of war renderer.
  *
- * Creates a darkness overlay across the screen and cuts out circular
- * areas for light sources (player torch, pylons, etc.).
+ * Multiple stacked darkness layers with progressively smaller cutouts
+ * create a smooth gradient from fully lit center → dim penumbra → pitch
+ * black fog. Each layer is a separate Graphics to avoid PixiJS batching
+ * issues. PixiJS 8 cut() order: rect → fill → circle → cut.
  *
- * For the placeholder phase this uses a simple approach: a semi-transparent
- * dark rectangle with circular mask cutouts at light source positions.
+ * Gradient zones (from center outward):
+ *   Bright core   (< 0.6× radius):  fully lit
+ *   Inner glow    (0.6–0.8× radius): subtle dim
+ *   Mid penumbra  (0.8–1.0× radius): noticeable dim
+ *   Outer penumbra(1.0–1.3× radius): quite dark
+ *   Deep fog      (1.3–1.6× radius): very dark
+ *   Total darkness(> 1.6× radius):   pitch black
  */
+/** A light source with optional colored ring. */
+export interface LightSource {
+  x: number;
+  y: number;
+  radius: number;
+  /** If set, draws a visible glowing ring at the light boundary. */
+  ringColor?: number;
+}
+
 export class LightingRenderer {
   readonly container: Container;
 
-  private darknessOverlay: Graphics;
-  private lightMask: Graphics;
+  // 5 darkness layers from outermost (largest cutouts) to innermost
+  private layers: Graphics[] = [];
+  private static readonly LAYER_CONFIG: Array<{ radiusScale: number; alpha: number }> = [
+    { radiusScale: 1.6, alpha: 0.55 },  // deep fog
+    { radiusScale: 1.3, alpha: 0.30 },  // outer penumbra
+    { radiusScale: 1.0, alpha: 0.18 },  // mid penumbra
+    { radiusScale: 0.8, alpha: 0.10 },  // inner glow
+    { radiusScale: 0.6, alpha: 0.06 },  // bright core edge
+  ];
+
+  /** Base darkness layer — always full screen, no cutouts. */
+  private baseDarkness: Graphics;
+
+  /** Visible ring outlines drawn at the edge of certain light sources. */
+  private rings: Graphics;
+
   private screenWidth: number;
   private screenHeight: number;
+  private _fullLight = false;
 
   constructor(screenWidth = 1920, screenHeight = 1080) {
     this.container = new Container();
@@ -24,91 +55,108 @@ export class LightingRenderer {
     this.screenWidth = screenWidth;
     this.screenHeight = screenHeight;
 
-    // Full-screen near-black overlay
-    this.darknessOverlay = new Graphics();
-    this.container.addChild(this.darknessOverlay);
+    // Base darkness (bottom layer, always covers everything at low alpha)
+    this.baseDarkness = new Graphics();
+    this.container.addChild(this.baseDarkness);
 
-    // Mask that defines lit areas (cutouts from the darkness)
-    this.lightMask = new Graphics();
-    this.darknessOverlay.mask = this.lightMask;
-    this.container.addChild(this.lightMask);
+    // Gradient layers stacked on top
+    for (let i = 0; i < LightingRenderer.LAYER_CONFIG.length; i++) {
+      const gfx = new Graphics();
+      this.layers.push(gfx);
+      this.container.addChild(gfx);
+    }
+
+    // Ring outlines on top of everything
+    this.rings = new Graphics();
+    this.container.addChild(this.rings);
 
     this.rebuildDarkness();
   }
 
-  /**
-   * Rebuild the darkness overlay rectangle.
-   * Call this when the screen size changes.
-   */
   resize(width: number, height: number): void {
     this.screenWidth = width;
     this.screenHeight = height;
     this.rebuildDarkness();
   }
 
-  private rebuildDarkness(): void {
-    this.darknessOverlay.clear();
-    // Cover an area larger than the screen to handle camera movement.
-    // The overlay follows the camera, so we use a large rectangle centered
-    // at (0, 0) in the container's local space.
-    const pad = 2000;
-    this.darknessOverlay.rect(
-      -pad,
-      -pad,
-      this.screenWidth + pad * 2,
-      this.screenHeight + pad * 2,
-    );
-    this.darknessOverlay.fill({ color: 0x000000, alpha: 0.85 });
+  setFullLight(enabled: boolean): void {
+    this._fullLight = enabled;
+    if (enabled) {
+      this.baseDarkness.clear();
+      this.rings.clear();
+      for (const layer of this.layers) layer.clear();
+      this.container.visible = false;
+    } else {
+      this.container.visible = true;
+      this.rebuildDarkness();
+    }
   }
 
-  /**
-   * Update torch / point light at a given world position.
-   *
-   * Clears any previous light cutouts and draws new ones.
-   * Call this once per frame with the current set of light sources.
-   *
-   * @param sources - Array of { x, y, radius } in world coordinates
-   */
-  updateLights(sources: Array<{ x: number; y: number; radius: number }>): void {
-    this.lightMask.clear();
+  get fullLight(): boolean {
+    return this._fullLight;
+  }
 
-    // The mask is inverted: we draw the full dark area, then subtract circles.
-    // In PixiJS, the mask shows where to render — so we draw the dark rect
-    // everywhere EXCEPT where lights are.
-    //
-    // Actually, for a simple approach we invert the logic:
-    // - The darknessOverlay is the dark rect
-    // - The lightMask defines where the darkness IS visible
-    // - We want darkness everywhere EXCEPT light circles
-    //
-    // PixiJS mask: rendered pixel = overlay pixel WHERE mask is opaque.
-    // So we draw the mask as a full rect, then we'll need a different approach.
-    //
-    // Simpler approach for placeholder: don't use a mask at all.
-    // Instead, draw the overlay with holes by using the Graphics API.
+  private rebuildDarkness(): void {
+    if (this._fullLight) return;
+    const pad = 4000;
+    const w = this.screenWidth + pad * 2;
+    const h = this.screenHeight + pad * 2;
 
-    // Reset darkness overlay with cutouts
-    this.darknessOverlay.clear();
-    const pad = 2000;
-    this.darknessOverlay.rect(
-      -pad,
-      -pad,
-      this.screenWidth + pad * 2,
-      this.screenHeight + pad * 2,
-    );
+    // Base layer: always full coverage
+    this.baseDarkness.clear();
+    this.baseDarkness.rect(-pad, -pad, w, h);
+    this.baseDarkness.fill({ color: 0x000000, alpha: 0.50 });
 
-    // Cut circles for each light source
-    for (const src of sources) {
-      this.darknessOverlay.circle(src.x, src.y, src.radius);
-      this.darknessOverlay.cut();
+    // Clear gradient layers
+    for (const layer of this.layers) layer.clear();
+  }
+
+  updateLights(sources: LightSource[]): void {
+    if (this._fullLight) return;
+
+    const pad = 4000;
+    const w = this.screenWidth + pad * 2;
+    const h = this.screenHeight + pad * 2;
+
+    // Base darkness — always full screen, no cutouts.
+    this.baseDarkness.clear();
+    this.baseDarkness.rect(-pad, -pad, w, h);
+    this.baseDarkness.fill({ color: 0x000000, alpha: 0.50 });
+
+    // Each gradient layer: fill rect, then cut circles at scaled radius
+    const config = LightingRenderer.LAYER_CONFIG;
+    for (let i = 0; i < config.length; i++) {
+      const layer = this.layers[i];
+      const { radiusScale, alpha } = config[i];
+
+      layer.clear();
+      layer.rect(-pad, -pad, w, h);
+      layer.fill({ color: 0x000000, alpha });
+
+      if (sources.length > 0) {
+        for (const src of sources) {
+          layer.circle(src.x, src.y, src.radius * radiusScale);
+          layer.cut();
+        }
+      }
     }
 
-    this.darknessOverlay.fill({ color: 0x000000, alpha: 0.85 });
+    // Visible rings at light source boundaries
+    this.rings.clear();
+    for (const src of sources) {
+      if (!src.ringColor) continue;
+      // Outer glow (wider, faint)
+      this.rings.circle(src.x, src.y, src.radius * 1.02);
+      this.rings.stroke({ color: src.ringColor, alpha: 0.08, width: 6 });
+      // Main ring
+      this.rings.circle(src.x, src.y, src.radius);
+      this.rings.stroke({ color: src.ringColor, alpha: 0.18, width: 2 });
+      // Inner glow (tighter, faint)
+      this.rings.circle(src.x, src.y, src.radius * 0.97);
+      this.rings.stroke({ color: src.ringColor, alpha: 0.06, width: 4 });
+    }
   }
 
-  /**
-   * Convenience method for a single torch light (e.g., the player's torch).
-   */
   updateTorchLight(x: number, y: number, radius: number): void {
     this.updateLights([{ x, y, radius }]);
   }

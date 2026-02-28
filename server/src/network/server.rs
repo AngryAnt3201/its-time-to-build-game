@@ -111,12 +111,13 @@ impl GameServer {
     /// Serialize `GameStateUpdate` via msgpack and send to the connected
     /// client. If no client is connected (or the channel has been dropped),
     /// this is a no-op.
-    pub fn send_state(&self, update: &GameStateUpdate) {
+    pub fn send_state(&mut self, update: &GameStateUpdate) {
         if let Some(tx) = &self.client_tx {
-            match rmp_serde::to_vec(update) {
+            match rmp_serde::to_vec_named(update) {
                 Ok(bytes) => {
-                    if let Err(_) = tx.send(bytes) {
-                        warn!("Client disconnected (send channel closed)");
+                    if tx.send(bytes).is_err() {
+                        warn!("Client disconnected — stopping sends");
+                        self.client_tx = None;
                     }
                 }
                 Err(e) => {

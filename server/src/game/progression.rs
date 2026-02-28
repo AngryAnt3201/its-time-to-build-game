@@ -39,9 +39,6 @@ pub fn progression_system(
     // ── Count completed buildings by tier ─────────────────────────────
     let mut tier_counts: [u32; 5] = [0; 5]; // indices 0..4
     let mut has_pylon = false;
-    let mut has_research_lab = false;
-    let mut has_websocket_server = false;
-    let mut has_autonomous_agent_framework = false;
 
     for (_entity, (building_type, construction)) in
         world.query::<(&BuildingType, &ConstructionProgress)>().with::<&Building>().iter()
@@ -54,15 +51,8 @@ pub fn progression_system(
                 tier_counts[tier] += 1;
             }
 
-            // Track specific landmark buildings
-            match building_type.kind {
-                BuildingTypeKind::Pylon => has_pylon = true,
-                BuildingTypeKind::ResearchLab => has_research_lab = true,
-                BuildingTypeKind::WebsocketServer => has_websocket_server = true,
-                BuildingTypeKind::AutonomousAgentFramework => {
-                    has_autonomous_agent_framework = true;
-                }
-                _ => {}
+            if building_type.kind == BuildingTypeKind::Pylon {
+                has_pylon = true;
             }
         }
     }
@@ -70,8 +60,8 @@ pub fn progression_system(
     // ── Check phase transitions ──────────────────────────────────────
     let transition = match game_state.phase {
         GamePhase::Hut => {
-            // Hut -> Outpost: 3+ Tier 1 buildings AND first Pylon complete
-            if tier_counts[1] >= 3 && has_pylon {
+            // Hut -> Outpost: 2+ Tier 1 buildings AND first Pylon complete
+            if tier_counts[1] >= 2 && has_pylon {
                 Some((
                     GamePhase::Outpost,
                     "[sys] the darkness has noticed you.".to_string(),
@@ -81,8 +71,8 @@ pub fn progression_system(
             }
         }
         GamePhase::Outpost => {
-            // Outpost -> Village: 5+ Tier 2 buildings AND Research Lab complete
-            if tier_counts[2] >= 5 && has_research_lab {
+            // Outpost -> Village: 2+ Tier 2 buildings
+            if tier_counts[2] >= 2 {
                 Some((
                     GamePhase::Village,
                     "[sys] they're sending more. build faster.".to_string(),
@@ -92,8 +82,8 @@ pub fn progression_system(
             }
         }
         GamePhase::Village => {
-            // Village -> Network: 3+ Tier 3 buildings AND Websocket Server complete
-            if tier_counts[3] >= 3 && has_websocket_server {
+            // Village -> Network: 2+ Tier 3 buildings
+            if tier_counts[3] >= 2 {
                 Some((
                     GamePhase::Network,
                     "[sys] your agents are talking to each other now. that's new.".to_string(),
@@ -103,8 +93,8 @@ pub fn progression_system(
             }
         }
         GamePhase::Network => {
-            // Network -> City: 2+ Tier 4 buildings AND Autonomous Agent Framework complete
-            if tier_counts[4] >= 2 && has_autonomous_agent_framework {
+            // Network -> City: Blockchain complete
+            if tier_counts[4] >= 1 {
                 Some((
                     GamePhase::City,
                     "[sys] the cascade approaches.".to_string(),

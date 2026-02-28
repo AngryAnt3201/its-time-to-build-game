@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "maestro-status": {
+      "args": [],
+      "command": "/Applications/Maestro.app/Contents/MacOS/maestro-mcp-server",
+      "env": {
+        "MAESTRO_INSTANCE_ID": "6190cbf6-b254-4358-b455-27f970186dbb",
+        "MAESTRO_SESSION_ID": "33",
+        "MAESTRO_STATUS_URL": "http://127.0.0.1:9900/status"
+      },
+      "type": "stdio"
+    }
+  }
+}

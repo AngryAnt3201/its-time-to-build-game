@@ -4,7 +4,7 @@ import { Application, Container, Graphics } from 'pixi.js';
 import { Connection } from './network/connection';
 import { EntityRenderer } from './renderer/entities';
 import { WorldRenderer, isWalkable, TILE_PX } from './renderer/world';
-import { LightingRenderer } from './renderer/lighting';
+import { LightingRenderer, type LightSource } from './renderer/lighting';
 import { HUD } from './ui/hud';
 import { AgentsHUD } from './ui/agents-hud';
 import { InventoryHUD } from './ui/inventory-hud';
@@ -18,6 +18,7 @@ import { DebugPanel } from './ui/debug-panel';
 import { BuildingPanel } from './ui/building-panel';
 import { Minimap } from './ui/minimap';
 import { HotbarTooltip } from './ui/hotbar-tooltip';
+import { BuildingToolbar } from './ui/building-toolbar';
 import { ALL_BUILDINGS, TIER_NAMES, buildingTypeToId as buildingIdFromType } from './data/buildings';
 import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta, BuildingTypeKind } from './network/protocol';
 import { AudioManager } from './audio/manager';
@@ -29,13 +30,8 @@ import { getProjectDir, getProjectInitFlag, setProjectInitFlag } from './utils/p
 // Must be kept in sync with server/src/game/building.rs definitions.
 const BUILDING_LIGHT_RADIUS: Partial<Record<BuildingTypeKind, number>> = {
   Pylon: 200,
-  ResearchLab: 80,
-  PomodoroTimer: 40,
-  OauthIntegration: 60,
-  TransformerModel: 80,
-  AutonomousAgentFramework: 100,
-  WordleClone: 90,
-  NftMarketplace: 50,
+  ChatApp: 60,
+  AiImageGenerator: 80,
   Blockchain: 70,
 };
 
@@ -109,6 +105,47 @@ async function startGame() {
       // Nothing needed — panel manages its own visibility
     },
   });
+
+  // ── Building hover toolbar ──────────────────────────────────────────
+  /** Collect all idle agents for the picker dropdown. */
+  function getIdleAgents(): { id: number; name: string; tier: string }[] {
+    const agents: { id: number; name: string; tier: string }[] = [];
+    for (const entity of entityMap.values()) {
+      if (entity.kind !== 'Agent') continue;
+      const data = (entity.data as { Agent?: { state: string; name: string; tier: string } }).Agent;
+      if (!data || data.state !== 'Idle') continue;
+      agents.push({ id: entity.id, name: data.name, tier: data.tier });
+    }
+    return agents;
+  }
+
+  const buildingToolbar = new BuildingToolbar({
+    onAssignAgent: (buildingId, agentId) => {
+      connectionRef?.sendInput({
+        tick: clientTickRef,
+        movement: { x: 0, y: 0 },
+        action: { AssignAgentToProject: { agent_id: agentId, building_id: buildingId } },
+        target: null,
+      });
+    },
+    onUnassignAgent: (buildingId, agentId) => {
+      connectionRef?.sendInput({
+        tick: clientTickRef,
+        movement: { x: 0, y: 0 },
+        action: { UnassignAgentFromProject: { agent_id: agentId, building_id: buildingId } },
+        target: null,
+      });
+    },
+    onOpenApp: (buildingId) => {
+      buildingToolbar.hide();
+      const name = buildingTypeToName(buildingId.replace(/_./g, m => m[1].toUpperCase()).replace(/^./, c => c.toUpperCase()));
+      const status = latestState?.project_manager?.building_statuses?.[buildingId] ?? 'NotInitialized';
+      buildingPanel.open(buildingId, name, `Building: ${name}`, status);
+    },
+  });
+
+  // Track which building the toolbar is currently showing for
+  let toolbarBuildingEntityId: number | null = null;
 
   // ── Audio system ──────────────────────────────────────────────────
   const audioManager = new AudioManager();
@@ -365,9 +402,86 @@ async function startGame() {
     } else {
       hotbarTooltip.hide();
     }
+
+  });
+
+  // ── Building hover toolbar (on window so it fires even over toolbar HTML) ──
+  window.addEventListener('mousemove', (e: MouseEvent) => {
+    if (buildMenu.placementMode || buildingPanel.visible) {
+      if (buildingToolbar.visible) buildingToolbar.hide();
+      return;
+    }
+
+    const worldX = (e.clientX - worldContainer.x) / ZOOM;
+    const worldY = (e.clientY - worldContainer.y) / ZOOM;
+    let nearestBuildingId: number | null = null;
+    let nearestDist = 48; // hover range in world pixels (matches E-key range)
+    let nearestBuildingType = '';
+    let nearestBx = 0;
+    let nearestBy = 0;
+
+    for (const entity of entityMap.values()) {
+      if (entity.kind !== 'Building') continue;
+      const data = (entity.data as { Building?: { building_type: string; construction_pct: number } }).Building;
+      if (!data) continue;
+      const dx = entity.position.x - worldX;
+      const dy = entity.position.y - worldY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestBuildingId = entity.id;
+        nearestBuildingType = data.building_type;
+        nearestBx = entity.position.x;
+        nearestBy = entity.position.y;
+      }
+    }
+
+    if (nearestBuildingId !== null) {
+      const bid = buildingTypeToId(nearestBuildingType);
+      const name = buildingTypeToName(nearestBuildingType);
+      const status = latestState?.project_manager?.building_statuses?.[bid] ?? 'NotInitialized';
+      const assignments = latestState?.project_manager?.agent_assignments?.[bid] ?? [];
+
+      // Resolve agent names from entity map
+      const assignedAgents = assignments.map(agentId => {
+        const agentEntity = entityMap.get(agentId);
+        const agentData = agentEntity ? (agentEntity.data as { Agent?: { name: string; tier: string } }).Agent : null;
+        return { id: agentId, name: agentData?.name ?? '?', tier: agentData?.tier ?? 'Apprentice' };
+      });
+
+      // Feed idle agents to the picker
+      buildingToolbar.setIdleAgents(getIdleAgents());
+      buildingToolbar.show(bid, name, status, assignedAgents);
+      buildingToolbar.cancelScheduledHide();
+      toolbarBuildingEntityId = nearestBuildingId;
+
+      // Position BELOW the building in screen coords (building sprite is 12px, so offset by ~10 world px)
+      const screenBx = nearestBx * ZOOM + worldContainer.x;
+      const screenBy = nearestBy * ZOOM + worldContainer.y + 10 * ZOOM;
+      buildingToolbar.updatePosition(screenBx, screenBy);
+    } else if (buildingToolbar.visible) {
+      buildingToolbar.scheduleHide();
+    }
   });
 
   app.canvas.addEventListener('click', (e: MouseEvent) => {
+    // ── Hotbar click detection ─────────────────────────────────────
+    const hotbarBounds = buildHotbar.container.getBounds();
+    const hLocalX = e.clientX - hotbarBounds.x;
+    const hLocalY = e.clientY - hotbarBounds.y;
+    const clickedSlot = buildHotbar.getSlotAtPosition(hLocalX, hLocalY);
+
+    if (clickedSlot === -2) {
+      // "+" button clicked — open building browser
+      buildMenu.toggle();
+      return;
+    }
+    if (clickedSlot >= 0) {
+      // Building slot clicked — select it (enters placement mode)
+      buildHotbar.selectSlot(clickedSlot);
+      return;
+    }
+
     if (buildMenu.placementMode) {
       const worldX = (e.clientX - worldContainer.x) / ZOOM;
       const worldY = (e.clientY - worldContainer.y) / ZOOM;
@@ -616,6 +730,8 @@ async function startGame() {
           const name = buildingTypeToName(nearestType);
           const status = latestState?.project_manager?.building_statuses?.[buildingId] ?? 'NotInitialized';
           buildingPanel.open(buildingId, name, `Building: ${name}`, status);
+          buildingToolbar.hide();
+          toolbarBuildingEntityId = null;
           interactedWithBuilding = true;
         }
 
@@ -701,8 +817,20 @@ async function startGame() {
       torchLight.x = pos.x;
       torchLight.y = pos.y;
 
+      // Update entity renderer with changed/removed entities
+      entityRenderer.update(state.entities_changed, state.entities_removed);
+
+      // Maintain persistent entity map (update BEFORE light collection
+      // so newly placed buildings are immediately available)
+      for (const entity of state.entities_changed) {
+        entityMap.set(entity.id, entity);
+      }
+      for (const removedId of state.entities_removed) {
+        entityMap.delete(removedId);
+      }
+
       // ── Collect all light sources (player + buildings) ──────────────
-      const lightSources: Array<{ x: number; y: number; radius: number }> = [];
+      const lightSources: LightSource[] = [];
 
       // Player torch
       if (state.player.torch_range > 0) {
@@ -716,22 +844,16 @@ async function startGame() {
         if (!data || data.construction_pct < 1.0) continue;
         const radius = BUILDING_LIGHT_RADIUS[data.building_type];
         if (radius) {
-          lightSources.push({ x: entity.position.x, y: entity.position.y, radius });
+          const src: LightSource = { x: entity.position.x, y: entity.position.y, radius };
+          // Pylons get a warm amber ring at their boundary
+          if (data.building_type === 'Pylon') {
+            src.ringColor = 0xffcc44;
+          }
+          lightSources.push(src);
         }
       }
 
       lightingRenderer.updateLights(lightSources);
-
-      // Update entity renderer with changed/removed entities
-      entityRenderer.update(state.entities_changed, state.entities_removed);
-
-      // Maintain persistent entity map (used for building proximity checks)
-      for (const entity of state.entities_changed) {
-        entityMap.set(entity.id, entity);
-      }
-      for (const removedId of state.entities_removed) {
-        entityMap.delete(removedId);
-      }
 
       // Update grimoire with agent data from entity deltas
       grimoire.update(state.entities_changed);
@@ -773,6 +895,22 @@ async function startGame() {
           const currentId = buildingPanel.currentBuildingId;
           const status = state.project_manager.building_statuses[currentId] ?? 'NotInitialized';
           buildingPanel.updateStatus(status);
+        }
+      }
+
+      // ── Update building toolbar position to follow camera ────────
+      if (buildingToolbar.visible && toolbarBuildingEntityId !== null) {
+        const bEntity = entityMap.get(toolbarBuildingEntityId);
+        if (bEntity) {
+          const screenBx = bEntity.position.x * ZOOM + worldContainer.x;
+          const screenBy = bEntity.position.y * ZOOM + worldContainer.y + 10 * ZOOM;
+          buildingToolbar.updatePosition(screenBx, screenBy);
+        }
+
+        // Hide toolbar when any blocking overlay opens
+        if (menuBlocking) {
+          buildingToolbar.hide();
+          toolbarBuildingEntityId = null;
         }
       }
 

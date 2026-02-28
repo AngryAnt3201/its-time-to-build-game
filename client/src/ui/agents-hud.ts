@@ -1,4 +1,4 @@
-import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import type { EntityDelta, AgentStateKind, AgentTierKind } from '../network/protocol';
 
 // ── Style constants ──────────────────────────────────────────────────
@@ -66,7 +66,27 @@ const tooltipLabelStyle = new TextStyle({
   fill: 0x5a5a4a,
 });
 
-const TOOLTIP_W = 200;
+const tooltipModelStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 9,
+  fill: 0x6a6a5a,
+});
+
+const TOOLTIP_W = 210;
+
+const TIER_MODEL_NAMES: Record<AgentTierKind, string> = {
+  Apprentice: 'Ministral 3B',
+  Journeyman: 'Ministral 8B',
+  Artisan: 'Codestral',
+  Architect: 'Devstral 2',
+};
+
+const TIER_ICONS: Record<AgentTierKind, string> = {
+  Apprentice: 'agent_1.png',
+  Journeyman: 'agent_2.png',
+  Artisan: 'agent_3.png',
+  Architect: 'agent_4.png',
+};
 
 // ── Agent state colors ──────────────────────────────────────────────
 
@@ -95,8 +115,12 @@ const PANEL_WIDTH = 180;
 const CARD_HEIGHT = 42;
 const CARD_GAP = 4;
 const MAX_VISIBLE = 6;
-const BAR_W = 60;
+const BAR_W = 50;
 const BAR_H = 4;
+const CARD_ICON_SIZE = 30;
+const CARD_ICON_X = 3;
+const CARD_CONTENT_X = CARD_ICON_X + CARD_ICON_SIZE + 6;
+const TOOLTIP_ICON_SIZE = 40;
 
 // ── Internal agent entry ────────────────────────────────────────────
 
@@ -164,6 +188,7 @@ export class AgentsHUD {
   private tooltipName: Text;
   private tooltipStars: Text;
   private tooltipLore: Text;
+  private tooltipModel: Text;
   private tooltipStats1: Text;
   private tooltipStats2: Text;
   private tooltipState: Text;
@@ -172,6 +197,12 @@ export class AgentsHUD {
   private tooltipTurns: Text;
   private tooltipXP: Text;
   private hoveredAgent: AgentEntry | null = null;
+  private tooltipIcon: Sprite | null = null;
+  private tooltipIconBorder: Graphics;
+
+  // Texture cache
+  private iconTextures: Map<string, Texture> = new Map();
+  private iconsLoaded = false;
 
   constructor() {
     this.container = new Container();
@@ -208,7 +239,11 @@ export class AgentsHUD {
     this.cardContainer = new Container();
     this.cardContainer.x = 6;
     this.cardContainer.y = 26;
+    this.cardContainer.eventMode = 'static';
     this.container.addChild(this.cardContainer);
+
+    // Tooltip hover events on the persistent cardContainer
+    this.cardContainer.on('pointerout', () => this.hideAgentTooltip());
 
     this.drawPanel(0);
 
@@ -233,42 +268,70 @@ export class AgentsHUD {
 
     this.tooltipLore = new Text({ text: '', style: tooltipLoreStyle });
     this.tooltipLore.x = 10;
-    this.tooltipLore.y = 24;
+    this.tooltipLore.y = 26;
     this.tooltipContainer.addChild(this.tooltipLore);
+
+    this.tooltipModel = new Text({ text: '', style: tooltipModelStyle });
+    this.tooltipModel.x = 10;
+    this.tooltipModel.y = 42;
+    this.tooltipContainer.addChild(this.tooltipModel);
 
     this.tooltipStats1 = new Text({ text: '', style: tooltipStatStyle });
     this.tooltipStats1.x = 10;
-    this.tooltipStats1.y = 44;
+    this.tooltipStats1.y = 60;
     this.tooltipContainer.addChild(this.tooltipStats1);
 
     this.tooltipStats2 = new Text({ text: '', style: tooltipStatStyle });
     this.tooltipStats2.x = 10;
-    this.tooltipStats2.y = 56;
+    this.tooltipStats2.y = 74;
     this.tooltipContainer.addChild(this.tooltipStats2);
 
     this.tooltipState = new Text({ text: '', style: tooltipStateStyle });
     this.tooltipState.x = 10;
-    this.tooltipState.y = 74;
+    this.tooltipState.y = 92;
     this.tooltipContainer.addChild(this.tooltipState);
 
     this.tooltipMoraleLabel = new Text({ text: '', style: tooltipLabelStyle });
     this.tooltipMoraleLabel.x = 10;
-    this.tooltipMoraleLabel.y = 88;
+    this.tooltipMoraleLabel.y = 108;
     this.tooltipContainer.addChild(this.tooltipMoraleLabel);
 
     this.tooltipMoraleBar = new Graphics();
-    this.tooltipMoraleBar.y = 88;
+    this.tooltipMoraleBar.y = 108;
     this.tooltipContainer.addChild(this.tooltipMoraleBar);
 
     this.tooltipTurns = new Text({ text: '', style: tooltipLabelStyle });
     this.tooltipTurns.x = 10;
-    this.tooltipTurns.y = 102;
+    this.tooltipTurns.y = 124;
     this.tooltipContainer.addChild(this.tooltipTurns);
 
     this.tooltipXP = new Text({ text: '', style: tooltipLabelStyle });
     this.tooltipXP.x = 10;
-    this.tooltipXP.y = 116;
+    this.tooltipXP.y = 140;
     this.tooltipContainer.addChild(this.tooltipXP);
+
+    // Tooltip profile icon border + sprite (added behind text)
+    this.tooltipIconBorder = new Graphics();
+    this.tooltipContainer.addChildAt(this.tooltipIconBorder, 2); // after bg and brackets
+
+    this.loadIconTextures();
+  }
+
+  // ── Asset loading ───────────────────────────────────────────────
+
+  private async loadIconTextures(): Promise<void> {
+    try {
+      const promises = Object.entries(TIER_ICONS).map(async ([_tier, file]) => {
+        const tex = await Assets.load<Texture>(`/icons/agents/${file}`);
+        tex.source.scaleMode = 'nearest';
+        this.iconTextures.set(file, tex);
+      });
+      await Promise.all(promises);
+      this.iconsLoaded = true;
+      this.needsRebuild = true;
+    } catch (err) {
+      console.warn('[agents-hud] Failed to load icon textures:', err);
+    }
   }
 
   // ── Public API ───────────────────────────────────────────────────
@@ -356,6 +419,17 @@ export class AgentsHUD {
     }
 
     this.drawPanel(visible.length);
+
+    // If we were hovering an agent, refresh the tooltip with updated data
+    // or hide it if that agent no longer exists
+    if (this.hoveredAgent) {
+      const updated = this.agents.get(this.hoveredAgent.id);
+      if (updated) {
+        this.showAgentTooltip(updated);
+      } else {
+        this.hideAgentTooltip();
+      }
+    }
   }
 
   private buildCard(agent: AgentEntry): Container {
@@ -369,20 +443,43 @@ export class AgentsHUD {
     bg.fill({ color: isDead ? 0x0a0908 : 0x151210, alpha: 0.6 });
     card.addChild(bg);
 
-    // Make card interactive for tooltip
+    // Make card interactive for tooltip (pointerout is on the persistent cardContainer)
     card.eventMode = 'static';
     card.cursor = 'pointer';
     card.on('pointerover', () => this.showAgentTooltip(agent));
-    card.on('pointerout', () => this.hideAgentTooltip());
     card.on('pointermove', (e) => this.moveAgentTooltip(e.globalX, e.globalY));
 
-    // State indicator dot
+    // Profile icon with circular border
+    const iconCx = CARD_ICON_X + CARD_ICON_SIZE / 2;
+    const iconCy = Math.round(CARD_HEIGHT / 2);
+    const tierColor = TIER_COLORS[agent.tier];
+
+    if (this.iconsLoaded) {
+      const iconFile = TIER_ICONS[agent.tier];
+      const tex = this.iconTextures.get(iconFile);
+      if (tex) {
+        const sprite = new Sprite(tex);
+        sprite.width = CARD_ICON_SIZE - 4;
+        sprite.height = CARD_ICON_SIZE - 4;
+        sprite.x = CARD_ICON_X + 2;
+        sprite.y = iconCy - (CARD_ICON_SIZE - 4) / 2;
+        card.addChild(sprite);
+      }
+    }
+
+    // Circular border around icon
+    const iconBorder = new Graphics();
+    iconBorder.circle(iconCx, iconCy, CARD_ICON_SIZE / 2);
+    iconBorder.stroke({ color: isDead ? 0x333333 : tierColor, alpha: isDead ? 0.4 : 0.8, width: 2 });
+    card.addChild(iconBorder);
+
+    // State indicator dot (top-right of icon)
     const dot = new Graphics();
     const dotColor = STATE_COLORS[agent.state];
-    dot.circle(8, 10, 3);
+    dot.circle(CARD_ICON_X + CARD_ICON_SIZE - 2, CARD_ICON_X + 4, 3);
     dot.fill(dotColor);
     if (!isDead && (agent.state === 'Critical' || agent.state === 'Erroring')) {
-      dot.circle(8, 10, 5);
+      dot.circle(CARD_ICON_X + CARD_ICON_SIZE - 2, CARD_ICON_X + 4, 5);
       dot.stroke({ color: dotColor, alpha: 0.4, width: 1 });
     }
     card.addChild(dot);
@@ -392,11 +489,11 @@ export class AgentsHUD {
       text: agent.name,
       style: isDead ? agentNameDeadStyle : agentNameStyle,
     });
-    name.x = 16;
+    name.x = CARD_CONTENT_X;
     name.y = 2;
     card.addChild(name);
 
-    // Star rating (replaces old tier badge dot)
+    // Star rating
     const starText = new Text({
       text: '\u2605'.repeat(agent.stars) + '\u2606'.repeat(3 - agent.stars),
       style: new TextStyle({
@@ -418,15 +515,15 @@ export class AgentsHUD {
         fill: isDead ? 0x444444 : STATE_COLORS[agent.state],
       }),
     });
-    stateText.x = 16;
+    stateText.x = CARD_CONTENT_X;
     stateText.y = 16;
     card.addChild(stateText);
 
     // Mini health bar
-    this.drawMiniBar(card, 16, 28, agent.health_pct, isDead ? 0x222222 : 0x883333, isDead);
+    this.drawMiniBar(card, CARD_CONTENT_X, 28, agent.health_pct, isDead ? 0x222222 : 0x883333, isDead);
 
     // Mini morale bar
-    this.drawMiniBar(card, 16 + BAR_W + 8, 28, agent.morale_pct, isDead ? 0x222222 : 0x887733, isDead);
+    this.drawMiniBar(card, CARD_CONTENT_X + BAR_W + 6, 28, agent.morale_pct, isDead ? 0x222222 : 0x887733, isDead);
 
     return card;
   }
@@ -453,7 +550,41 @@ export class AgentsHUD {
   private showAgentTooltip(agent: AgentEntry): void {
     this.hoveredAgent = agent;
 
+    // Tooltip profile icon
+    const iconX = 10;
+    const iconY = 8;
+    const iconContentX = iconX + TOOLTIP_ICON_SIZE + 8;
+    const tierColor = TIER_COLORS[agent.tier];
+
+    // Remove old tooltip icon sprite if any
+    if (this.tooltipIcon) {
+      this.tooltipContainer.removeChild(this.tooltipIcon);
+      this.tooltipIcon.destroy();
+      this.tooltipIcon = null;
+    }
+
+    if (this.iconsLoaded) {
+      const iconFile = TIER_ICONS[agent.tier];
+      const tex = this.iconTextures.get(iconFile);
+      if (tex) {
+        this.tooltipIcon = new Sprite(tex);
+        this.tooltipIcon.width = TOOLTIP_ICON_SIZE - 4;
+        this.tooltipIcon.height = TOOLTIP_ICON_SIZE - 4;
+        this.tooltipIcon.x = iconX + 2;
+        this.tooltipIcon.y = iconY + 2;
+        this.tooltipContainer.addChildAt(this.tooltipIcon, 3); // after bg, brackets, border
+      }
+    }
+
+    // Circular border for tooltip icon
+    const iconCx = iconX + TOOLTIP_ICON_SIZE / 2;
+    const iconCy = iconY + TOOLTIP_ICON_SIZE / 2;
+    this.tooltipIconBorder.clear();
+    this.tooltipIconBorder.circle(iconCx, iconCy, TOOLTIP_ICON_SIZE / 2);
+    this.tooltipIconBorder.stroke({ color: tierColor, alpha: 0.9, width: 2 });
+
     this.tooltipName.text = agent.name.toUpperCase();
+    this.tooltipName.x = iconContentX;
 
     // Stars — position to the right of the name
     const starFull = '\u2605'.repeat(agent.stars);
@@ -462,7 +593,12 @@ export class AgentsHUD {
     this.tooltipStars.x = TOOLTIP_W - this.tooltipStars.width - 10;
     this.tooltipStars.y = 10;
 
-    this.tooltipLore.text = '"' + agent.model_lore_name + '"';
+    this.tooltipLore.text = '\u201c' + agent.model_lore_name + '\u201d';
+    this.tooltipLore.x = iconContentX;
+
+    // Model name
+    this.tooltipModel.text = TIER_MODEL_NAMES[agent.tier] + '  \u00b7  ' + agent.tier;
+    this.tooltipModel.x = iconContentX;
 
     // Stats
     this.tooltipStats1.text = 'Tier: ' + agent.tier;
@@ -475,17 +611,21 @@ export class AgentsHUD {
 
     // Morale
     const moralePct = Math.round(agent.morale_pct * 100);
-    this.tooltipMoraleLabel.text = 'Morale: ' + moralePct + '%';
+    this.tooltipMoraleLabel.text = 'Morale:';
 
-    // Morale bar
-    const barX = 70;
-    const barW = 80;
+    // Morale bar — positioned after label with percentage at the end
+    const barX = 54;
+    const barW = 90;
     const barH = 6;
     this.tooltipMoraleBar.clear();
-    this.tooltipMoraleBar.rect(barX, 2, barW, barH);
+    this.tooltipMoraleBar.rect(barX, 3, barW, barH);
     this.tooltipMoraleBar.fill({ color: 0x1a1210, alpha: 0.9 });
-    this.tooltipMoraleBar.rect(barX, 2, barW * agent.morale_pct, barH);
+    this.tooltipMoraleBar.rect(barX, 3, barW * agent.morale_pct, barH);
     this.tooltipMoraleBar.fill({ color: moralePct < 30 ? 0x883333 : 0x887733, alpha: 1.0 });
+
+    // Morale percentage after bar
+    const moralePctText = ' ' + moralePct + '%';
+    this.tooltipMoraleLabel.text = 'Morale:' + ' '.repeat(24) + moralePctText;
 
     // Turns
     const turnRatio = agent.max_turns > 0 ? agent.turns_used / agent.max_turns : 0;
@@ -497,7 +637,7 @@ export class AgentsHUD {
     this.tooltipXP.text = 'XP: ' + agent.xp + '  Lv.' + agent.level;
 
     // Resize tooltip background
-    const tooltipH = 134;
+    const tooltipH = 158;
     this.tooltipBg.clear();
     this.tooltipBg.roundRect(0, 0, TOOLTIP_W, tooltipH, 3);
     this.tooltipBg.fill({ color: 0x0d0b08, alpha: 0.94 });

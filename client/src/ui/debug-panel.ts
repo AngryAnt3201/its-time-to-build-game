@@ -144,6 +144,9 @@ export class DebugPanel {
   /** Callback for client-side debug boundary overlay toggle. */
   onToggleBoundaries: (() => void) | null = null;
 
+  /** Callback for toggling full-light mode (disables fog of war). */
+  onToggleFullLight: (() => void) | null = null;
+
   // Panel elements
   private panel: Graphics;
   private contentContainer: Container;
@@ -153,11 +156,13 @@ export class DebugPanel {
   private spawningText!: Text;
   private godModeText!: Text;
   private boundariesText!: Text;
+  private fullLightText!: Text;
   private phaseText!: Text;
   private crankTierText!: Text;
 
   // Client-side state
   private boundariesOn = false;
+  private fullLightOn = false;
 
   constructor() {
     this.container = new Container();
@@ -323,6 +328,31 @@ export class DebugPanel {
     toggleBoundBtn.x = contentWidth - 52;
     toggleBoundBtn.y = y;
     c.addChild(toggleBoundBtn);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+
+    // Full Light row (client-side toggle — disables fog of war)
+    const fullLightLabel = new Text({ text: 'Full Light:', style: labelStyle });
+    fullLightLabel.x = 0;
+    fullLightLabel.y = y + 4;
+    c.addChild(fullLightLabel);
+
+    this.fullLightText = new Text({ text: 'OFF', style: valueOffStyle });
+    this.fullLightText.x = 86;
+    this.fullLightText.y = y + 4;
+    c.addChild(this.fullLightText);
+
+    const toggleFullLightBtn = createButton(
+      { label: 'Toggle', action: 'DebugToggleGodMode', width: 52 },
+      () => {
+        this.fullLightOn = !this.fullLightOn;
+        this.fullLightText.text = this.fullLightOn ? 'ON' : 'OFF';
+        this.fullLightText.style = this.fullLightOn ? valueOnStyle : valueOffStyle;
+        if (this.onToggleFullLight) this.onToggleFullLight();
+      },
+    );
+    toggleFullLightBtn.x = contentWidth - 52;
+    toggleFullLightBtn.y = y;
+    c.addChild(toggleFullLightBtn);
     y += BUTTON_HEIGHT + SECTION_GAP;
 
     // ── ACTIONS section ───────────────────────────────────────────

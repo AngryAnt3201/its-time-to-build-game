@@ -26,7 +26,9 @@ pub fn agent_wander_system(world: &mut World) {
     let idle_agents: Vec<(hecs::Entity, f32)> = world
         .query::<(&Agent, &AgentState, &AgentStats)>()
         .iter()
-        .filter(|(_e, (_a, state, _stats))| state.state == AgentStateKind::Idle)
+        .filter(|(_e, (_a, state, _stats))| {
+            state.state == AgentStateKind::Idle || state.state == AgentStateKind::Building
+        })
         .map(|(e, (_a, _state, stats))| (e, stats.speed))
         .collect();
 
@@ -185,7 +187,7 @@ mod tests {
                 resilience: 60.0,
             },
             AgentState {
-                state: AgentStateKind::Building,
+                state: AgentStateKind::Erroring,
             },
             WanderState {
                 home_x: 100.0,
@@ -200,7 +202,7 @@ mod tests {
         agent_wander_system(&mut world);
 
         let pos = world.get::<&Position>(entity).unwrap();
-        assert_eq!(pos.x, 100.0, "Building agent should not wander");
+        assert_eq!(pos.x, 100.0, "Erroring agent should not wander");
     }
 
     #[test]
