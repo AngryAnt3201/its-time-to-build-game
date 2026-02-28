@@ -21,6 +21,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   function handleSave() {
@@ -38,7 +47,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   return (
     <div className="modal-backdrop" onClick={handleBackdropClick}>
       <div className="modal-panel">
-        <button className="modal-close" onClick={onClose}>
+        <button className="modal-close" onClick={onClose} aria-label="Close settings">
           X
         </button>
         <h2 className="modal-title">Settings</h2>
