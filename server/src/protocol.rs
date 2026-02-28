@@ -229,6 +229,17 @@ pub struct ProjectManagerState {
     pub agent_assignments: HashMap<String, Vec<u64>>, // building_id -> agent entity ids
 }
 
+// ── Combat events (for client VFX) ────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CombatEvent {
+    pub x: f32,
+    pub y: f32,
+    pub damage: i32,
+    pub is_kill: bool,
+    pub rogue_type: Option<RogueTypeKind>,
+}
+
 // ── Main game state update (Server → Client) ──────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,6 +255,9 @@ pub struct GameStateUpdate {
     pub debug: DebugSnapshot,
     pub wheel: WheelSnapshot,
     pub project_manager: Option<ProjectManagerState>,
+    pub combat_events: Vec<CombatEvent>,
+    pub player_hit: bool,
+    pub player_hit_damage: i32,
 }
 
 // ── Client → Server messages ───────────────────────────────────────

@@ -525,6 +525,8 @@ async fn main() {
         // ── 4. Combat system ─────────────────────────────────────────
         let combat_result = combat::combat_system(&mut world, &mut game_state, player_attacking);
 
+        // TODO(Task 5): Spawn projectile if player used crossbow
+
         // Collect entity IDs of killed rogues before they were despawned
         let mut entities_removed: Vec<EntityId> = combat_result
             .killed_rogues
@@ -844,6 +846,9 @@ async fn main() {
                     CrankTier::RunicEngine => None,
                 },
             },
+            combat_events: combat_result.combat_events.clone(),
+            player_hit: combat_result.player_damaged,
+            player_hit_damage: combat_result.player_hit_damage,
             project_manager: Some(ProjectManagerState {
                 base_dir: project_manager.base_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
                 initialized: project_manager.initialized,

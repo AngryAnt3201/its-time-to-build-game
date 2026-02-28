@@ -184,6 +184,16 @@ export interface ProjectManagerState {
   agent_assignments: Record<string, number[]>;
 }
 
+// ── Combat events (for client VFX) ────────────────────────────────
+
+export interface CombatEvent {
+  x: number;
+  y: number;
+  damage: number;
+  is_kill: boolean;
+  rogue_type: RogueTypeKind | null;
+}
+
 // ── Main game state update (Server -> Client) ─────────────────────
 
 export interface GameStateUpdate {
@@ -197,6 +207,9 @@ export interface GameStateUpdate {
   audio_triggers: AudioEvent[];
   debug: DebugSnapshot;
   project_manager: ProjectManagerState | null;
+  combat_events: CombatEvent[];
+  player_hit: boolean;
+  player_hit_damage: number;
 }
 
 // ── Server → Client message wrapper ────────────────────────────────
