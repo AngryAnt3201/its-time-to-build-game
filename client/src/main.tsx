@@ -605,6 +605,48 @@ async function startGame() {
       const worldY = (e.clientY - worldContainer.y) / ZOOM;
       buildMenu.confirmPlacement(worldX, worldY);
       buildHotbar.clearSelection();
+      return;
+    }
+
+    // ── Agent click detection — click Building agent to open terminal ──
+    {
+      const worldX = (e.clientX - worldContainer.x) / ZOOM;
+      const worldY = (e.clientY - worldContainer.y) / ZOOM;
+      type AgentClickData = { name: string; tier: string; state: string };
+      let clickedAgentId: number | null = null;
+      let clickedAgentData: AgentClickData | null = null;
+      let clickedDist = 32;
+
+      for (const entity of entityMap.values()) {
+        if (entity.kind !== 'Agent') continue;
+        const data = (entity.data as { Agent?: AgentClickData }).Agent;
+        if (!data) continue;
+        const dx = entity.position.x - worldX;
+        const dy = entity.position.y - worldY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < clickedDist) {
+          clickedDist = dist;
+          clickedAgentId = entity.id;
+          clickedAgentData = data;
+        }
+      }
+
+      if (clickedAgentId !== null && clickedAgentData !== null && clickedAgentData.state === 'Building') {
+        // Find which building this agent is assigned to
+        let agentBuildingId = '';
+        let agentBuildingName = '';
+        if (latestState?.project_manager?.agent_assignments) {
+          for (const [bid, agents] of Object.entries(latestState.project_manager.agent_assignments)) {
+            if ((agents as number[]).includes(clickedAgentId)) {
+              agentBuildingId = bid;
+              agentBuildingName = buildingTypeToName(bid.replace(/_./g, m => m[1].toUpperCase()).replace(/^./, c => c.toUpperCase()));
+              break;
+            }
+          }
+        }
+        agentWorldTooltip.hide();
+        terminalOverlay.openPinned(clickedAgentId, agentBuildingId, clickedAgentData.name, agentBuildingName);
+      }
     }
   });
 
