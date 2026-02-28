@@ -40,12 +40,12 @@ export class TerminalOverlay {
       display: none;
       position: fixed;
       z-index: 1100;
-      background: #0d0d0d;
-      border: 1px solid #333;
+      background: #0d0b08;
+      border: 1px solid #d4a017;
       border-radius: 6px;
       overflow: hidden;
       font-family: 'IBM Plex Mono', monospace;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.8);
+      box-shadow: 0 0 16px rgba(212, 160, 23, 0.25), 0 4px 24px rgba(0, 0, 0, 0.8);
     `;
 
     this.header = document.createElement('div');
@@ -54,13 +54,13 @@ export class TerminalOverlay {
       align-items: center;
       gap: 8px;
       padding: 6px 10px;
-      background: #1a1a1a;
-      border-bottom: 1px solid #333;
+      background: #1a1510;
+      border-bottom: 1px solid #3a3020;
       user-select: none;
     `;
 
     this.titleEl = document.createElement('span');
-    this.titleEl.style.cssText = 'color: #aaa; font-size: 11px; flex: 1;';
+    this.titleEl.style.cssText = 'color: #d4a017; font-size: 11px; flex: 1; font-weight: bold;';
 
     this.statusEl = document.createElement('span');
     this.statusEl.style.cssText = 'font-size: 9px; padding: 1px 6px; border-radius: 3px; background: #1a2e1a; color: #4a8;';
@@ -71,7 +71,7 @@ export class TerminalOverlay {
     this.closeBtn.style.cssText = `
       background: none;
       border: none;
-      color: #666;
+      color: #7a6a3a;
       font-size: 14px;
       cursor: pointer;
       padding: 0 4px;
@@ -81,8 +81,8 @@ export class TerminalOverlay {
       e.stopPropagation();
       this.close();
     });
-    this.closeBtn.addEventListener('mouseenter', () => { this.closeBtn.style.color = '#fff'; });
-    this.closeBtn.addEventListener('mouseleave', () => { this.closeBtn.style.color = '#666'; });
+    this.closeBtn.addEventListener('mouseenter', () => { this.closeBtn.style.color = '#d4a017'; });
+    this.closeBtn.addEventListener('mouseleave', () => { this.closeBtn.style.color = '#7a6a3a'; });
 
     this.header.appendChild(this.titleEl);
     this.header.appendChild(this.statusEl);
