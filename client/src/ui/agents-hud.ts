@@ -32,6 +32,42 @@ const stateStyle = new TextStyle({
   fill: 0x6a6a5a,
 });
 
+// ── Tooltip styles ──────────────────────────────────────────────────
+
+const tooltipNameStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 12,
+  fontWeight: 'bold',
+  fill: 0xd4a017,
+});
+
+const tooltipLoreStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 10,
+  fontStyle: 'italic',
+  fill: 0x8a7a5a,
+});
+
+const tooltipStatStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 9,
+  fill: 0x6a8a6a,
+});
+
+const tooltipStateStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 9,
+  fill: 0x9a9a8a,
+});
+
+const tooltipLabelStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 9,
+  fill: 0x5a5a4a,
+});
+
+const TOOLTIP_W = 200;
+
 // ── Agent state colors ──────────────────────────────────────────────
 
 const STATE_COLORS: Record<AgentStateKind, number> = {
@@ -120,6 +156,23 @@ export class AgentsHUD {
   private cardContainer: Container;
   private needsRebuild = true;
 
+  /** The tooltip container — add to the top-level UI so it renders above everything. */
+  readonly tooltipContainer: Container;
+
+  private tooltipBg: Graphics;
+  private tooltipBrackets: Graphics;
+  private tooltipName: Text;
+  private tooltipStars: Text;
+  private tooltipLore: Text;
+  private tooltipStats1: Text;
+  private tooltipStats2: Text;
+  private tooltipState: Text;
+  private tooltipMoraleLabel: Text;
+  private tooltipMoraleBar: Graphics;
+  private tooltipTurns: Text;
+  private tooltipXP: Text;
+  private hoveredAgent: AgentEntry | null = null;
+
   constructor() {
     this.container = new Container();
     this.container.label = 'agents-hud';
@@ -158,6 +211,64 @@ export class AgentsHUD {
     this.container.addChild(this.cardContainer);
 
     this.drawPanel(0);
+
+    // ── Tooltip (separate container for z-order) ──
+    this.tooltipContainer = new Container();
+    this.tooltipContainer.label = 'agent-tooltip';
+    this.tooltipContainer.visible = false;
+
+    this.tooltipBg = new Graphics();
+    this.tooltipContainer.addChild(this.tooltipBg);
+
+    this.tooltipBrackets = new Graphics();
+    this.tooltipContainer.addChild(this.tooltipBrackets);
+
+    this.tooltipName = new Text({ text: '', style: tooltipNameStyle });
+    this.tooltipName.x = 10;
+    this.tooltipName.y = 8;
+    this.tooltipContainer.addChild(this.tooltipName);
+
+    this.tooltipStars = new Text({ text: '', style: new TextStyle({ fontFamily: FONT, fontSize: 11, fill: 0xd4a017 }) });
+    this.tooltipContainer.addChild(this.tooltipStars);
+
+    this.tooltipLore = new Text({ text: '', style: tooltipLoreStyle });
+    this.tooltipLore.x = 10;
+    this.tooltipLore.y = 24;
+    this.tooltipContainer.addChild(this.tooltipLore);
+
+    this.tooltipStats1 = new Text({ text: '', style: tooltipStatStyle });
+    this.tooltipStats1.x = 10;
+    this.tooltipStats1.y = 44;
+    this.tooltipContainer.addChild(this.tooltipStats1);
+
+    this.tooltipStats2 = new Text({ text: '', style: tooltipStatStyle });
+    this.tooltipStats2.x = 10;
+    this.tooltipStats2.y = 56;
+    this.tooltipContainer.addChild(this.tooltipStats2);
+
+    this.tooltipState = new Text({ text: '', style: tooltipStateStyle });
+    this.tooltipState.x = 10;
+    this.tooltipState.y = 74;
+    this.tooltipContainer.addChild(this.tooltipState);
+
+    this.tooltipMoraleLabel = new Text({ text: '', style: tooltipLabelStyle });
+    this.tooltipMoraleLabel.x = 10;
+    this.tooltipMoraleLabel.y = 88;
+    this.tooltipContainer.addChild(this.tooltipMoraleLabel);
+
+    this.tooltipMoraleBar = new Graphics();
+    this.tooltipMoraleBar.y = 88;
+    this.tooltipContainer.addChild(this.tooltipMoraleBar);
+
+    this.tooltipTurns = new Text({ text: '', style: tooltipLabelStyle });
+    this.tooltipTurns.x = 10;
+    this.tooltipTurns.y = 102;
+    this.tooltipContainer.addChild(this.tooltipTurns);
+
+    this.tooltipXP = new Text({ text: '', style: tooltipLabelStyle });
+    this.tooltipXP.x = 10;
+    this.tooltipXP.y = 116;
+    this.tooltipContainer.addChild(this.tooltipXP);
   }
 
   // ── Public API ───────────────────────────────────────────────────
@@ -258,6 +369,13 @@ export class AgentsHUD {
     bg.fill({ color: isDead ? 0x0a0908 : 0x151210, alpha: 0.6 });
     card.addChild(bg);
 
+    // Make card interactive for tooltip
+    card.eventMode = 'static';
+    card.cursor = 'pointer';
+    card.on('pointerover', () => this.showAgentTooltip(agent));
+    card.on('pointerout', () => this.hideAgentTooltip());
+    card.on('pointermove', (e) => this.moveAgentTooltip(e.globalX, e.globalY));
+
     // State indicator dot
     const dot = new Graphics();
     const dotColor = STATE_COLORS[agent.state];
@@ -330,5 +448,75 @@ export class AgentsHUD {
       fill.fill(color);
       parent.addChild(fill);
     }
+  }
+
+  private showAgentTooltip(agent: AgentEntry): void {
+    this.hoveredAgent = agent;
+
+    this.tooltipName.text = agent.name.toUpperCase();
+
+    // Stars — position to the right of the name
+    const starFull = '\u2605'.repeat(agent.stars);
+    const starEmpty = '\u2606'.repeat(3 - agent.stars);
+    this.tooltipStars.text = starFull + starEmpty;
+    this.tooltipStars.x = TOOLTIP_W - this.tooltipStars.width - 10;
+    this.tooltipStars.y = 10;
+
+    this.tooltipLore.text = '"' + agent.model_lore_name + '"';
+
+    // Stats
+    this.tooltipStats1.text = 'Tier: ' + agent.tier;
+    this.tooltipStats2.text = 'Health: ' + Math.round(agent.health_pct * 100) + '%';
+
+    // State with color
+    const stateColor = STATE_COLORS[agent.state] ?? 0x9a9a8a;
+    this.tooltipState.style.fill = stateColor;
+    this.tooltipState.text = 'State: ' + (agent.state === 'Unresponsive' ? 'DEAD' : agent.state);
+
+    // Morale
+    const moralePct = Math.round(agent.morale_pct * 100);
+    this.tooltipMoraleLabel.text = 'Morale: ' + moralePct + '%';
+
+    // Morale bar
+    const barX = 70;
+    const barW = 80;
+    const barH = 6;
+    this.tooltipMoraleBar.clear();
+    this.tooltipMoraleBar.rect(barX, 2, barW, barH);
+    this.tooltipMoraleBar.fill({ color: 0x1a1210, alpha: 0.9 });
+    this.tooltipMoraleBar.rect(barX, 2, barW * agent.morale_pct, barH);
+    this.tooltipMoraleBar.fill({ color: moralePct < 30 ? 0x883333 : 0x887733, alpha: 1.0 });
+
+    // Turns
+    const turnRatio = agent.max_turns > 0 ? agent.turns_used / agent.max_turns : 0;
+    const turnColor = turnRatio > 0.8 ? 0xaa3333 : 0x5a5a4a;
+    this.tooltipTurns.style.fill = turnColor;
+    this.tooltipTurns.text = 'Turns: ' + agent.turns_used + '/' + agent.max_turns;
+
+    // XP
+    this.tooltipXP.text = 'XP: ' + agent.xp + '  Lv.' + agent.level;
+
+    // Resize tooltip background
+    const tooltipH = 134;
+    this.tooltipBg.clear();
+    this.tooltipBg.roundRect(0, 0, TOOLTIP_W, tooltipH, 3);
+    this.tooltipBg.fill({ color: 0x0d0b08, alpha: 0.94 });
+    this.tooltipBg.roundRect(0, 0, TOOLTIP_W, tooltipH, 3);
+    this.tooltipBg.stroke({ color: 0x3a3020, alpha: 0.7, width: 1 });
+
+    this.tooltipBrackets.clear();
+    drawCornerBrackets(this.tooltipBrackets, 0, 0, TOOLTIP_W, tooltipH, 6, 0xd4a017, 0.35);
+
+    this.tooltipContainer.visible = true;
+  }
+
+  private hideAgentTooltip(): void {
+    this.hoveredAgent = null;
+    this.tooltipContainer.visible = false;
+  }
+
+  private moveAgentTooltip(globalX: number, globalY: number): void {
+    this.tooltipContainer.x = globalX + 16;
+    this.tooltipContainer.y = globalY - 20;
   }
 }
