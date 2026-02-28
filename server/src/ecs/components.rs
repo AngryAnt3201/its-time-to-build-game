@@ -88,6 +88,11 @@ pub struct CombatPower {
     pub base_damage: i32,
     pub attack_speed: f32,
     pub weapon: WeaponType,
+    pub cooldown_ticks: u32,
+    pub cooldown_remaining: u32,
+    pub range: f32,
+    pub arc_degrees: f32,
+    pub is_projectile: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -6,9 +6,11 @@ use crate::game::upgrades::UpgradeState;
 
 use super::components::{
     Agent, AgentMorale, AgentName, AgentPersonality, AgentState, AgentStats, AgentTier, AgentXP,
-    Assignment, CombatPower, CrankState, CrankTier, CarryCapacity, Facing, GamePhase, GameState,
-    Health, Player, Position, TokenEconomy, TorchRange, Velocity, VoiceProfile, WeaponType,
+    ArmorType, Assignment, CrankState, CrankTier, CarryCapacity, Facing,
+    GamePhase, GameState, Health, Player, Position, TokenEconomy, TorchRange, Velocity,
+    VoiceProfile, WeaponType,
 };
+use super::weapon_stats;
 
 /// Creates a new ECS world pre-populated with the player and one starting
 /// agent, along with the initial `GameState` resource.
@@ -26,11 +28,8 @@ pub fn create_world() -> (World, GameState) {
         },
         TorchRange { radius: 120.0 },
         CarryCapacity { current: 0, max: 5 },
-        CombatPower {
-            base_damage: 10,
-            attack_speed: 10.0,
-            weapon: WeaponType::ProcessTerminator,
-        },
+        weapon_stats::weapon_stats(WeaponType::ProcessTerminator),
+        weapon_stats::armor_stats(ArmorType::BasePrompt),
         Facing::default(),
     ));
 
