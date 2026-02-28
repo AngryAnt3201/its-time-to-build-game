@@ -154,7 +154,11 @@ export class BuildHotbar {
   /** Update which blueprints the player owns. */
   setOwnedBlueprints(blueprintTypes: string[]): void {
     this.ownedBlueprints = new Set(blueprintTypes);
-    this.rebuildAllSlots();
+    // Infrastructure + starter buildings always count as "owned"
+    this.ownedBlueprints.add('Pylon');
+    this.ownedBlueprints.add('ComputeFarm');
+    this.ownedBlueprints.add('TodoApp');
+    this.recalculateEntries();
   }
 
   resize(screenWidth: number, screenHeight: number): void {
@@ -226,34 +230,10 @@ export class BuildHotbar {
     return entry;
   }
 
-  /** Update placed building counts; filters out already-built non-stackable buildings. */
+  /** Update placed building counts; triggers entry recalculation. */
   setPlacedBuildingCounts(counts: Map<BuildingTypeKind, number>): void {
     this.placedBuildingCounts = counts;
-
-    // Filter: keep stackable buildings + non-stackable that haven't been built yet
-    const filtered = DEFAULT_HOTBAR.filter(entry => {
-      if (STACKABLE_TYPES.has(entry.type)) return true;
-      return (counts.get(entry.type) ?? 0) === 0;
-    });
-
-    // Re-number keys sequentially
-    const renumbered = filtered.map((entry, i) => ({
-      ...entry,
-      key: String(i + 1),
-    }));
-
-    // Check if the visible entries changed
-    const oldTypes = this.entries.map(e => e.type).join(',');
-    const newTypes = renumbered.map(e => e.type).join(',');
-    if (oldTypes !== newTypes) {
-      this.entries = renumbered;
-      this.selectedIndex = -1;
-      this.rebuildAllSlots();
-      return;
-    }
-
-    // Even if the same buildings are shown, refresh escalating costs on slots
-    this.refreshSlotCosts();
+    this.recalculateEntries();
   }
 
   /** Refresh the displayed cost on each slot (for escalating prices). */
@@ -274,6 +254,34 @@ export class BuildHotbar {
         costText.x = Math.round((SLOT_W - costText.width) / 2);
       }
     }
+  }
+
+  /** Recalculate which entries to show based on blueprint ownership + placed buildings. */
+  private recalculateEntries(): void {
+    const filtered = DEFAULT_HOTBAR.filter(entry => {
+      // Stackable (infrastructure) buildings always show
+      if (STACKABLE_TYPES.has(entry.type)) return true;
+      // Must own the blueprint to show in hotbar
+      if (!this.ownedBlueprints.has(entry.type)) return false;
+      // Non-stackable: hide if already built
+      return (this.placedBuildingCounts.get(entry.type) ?? 0) === 0;
+    });
+
+    const renumbered = filtered.map((entry, i) => ({
+      ...entry,
+      key: String(i + 1),
+    }));
+
+    const oldTypes = this.entries.map(e => e.type).join(',');
+    const newTypes = renumbered.map(e => e.type).join(',');
+    if (oldTypes !== newTypes) {
+      this.entries = renumbered;
+      this.selectedIndex = -1;
+      this.rebuildAllSlots();
+      return;
+    }
+
+    this.refreshSlotCosts();
   }
 
   /** Tear down and rebuild all slot visuals + panel. */
@@ -342,11 +350,26 @@ export class BuildHotbar {
       keyText.y = 1;
       slot.addChild(keyText);
 
-      // Building name (centered)
+      // Blueprint icon (centered, prominent)
+      const bp = getBlueprintForBuilding(entry.type);
+      if (bp) {
+        Assets.load<Texture>(bp.icon).then((tex) => {
+          tex.source.scaleMode = 'nearest';
+          const bpSprite = new Sprite(tex);
+          bpSprite.label = 'bp-icon';
+          bpSprite.width = 24;
+          bpSprite.height = 24;
+          bpSprite.x = Math.round((SLOT_W - 24) / 2);
+          bpSprite.y = 1;
+          slot.addChild(bpSprite);
+        }).catch(() => { /* texture not found — skip */ });
+      }
+
+      // Building name (below icon)
       const nameText = new Text({ text: entry.name, style: slotNameStyle });
       nameText.label = 'slot-name';
       nameText.x = Math.round((SLOT_W - nameText.width) / 2);
-      nameText.y = 12;
+      nameText.y = 27;
       slot.addChild(nameText);
 
       // Cost (bottom) — show escalating cost for stackable buildings
@@ -356,26 +379,8 @@ export class BuildHotbar {
       const costText = new Text({ text: `${displayCost}◆`, style: slotCostStyle });
       costText.label = 'slot-cost';
       costText.x = Math.round((SLOT_W - costText.width) / 2);
-      costText.y = SLOT_H - 14;
+      costText.y = 38;
       slot.addChild(costText);
-
-      // Blueprint icon (top-right corner)
-      const bp = getBlueprintForBuilding(entry.type);
-      if (bp) {
-        const owned = this.ownedBlueprints.has(entry.type);
-        Assets.load<Texture>(bp.icon).then((tex) => {
-          tex.source.scaleMode = 'nearest';
-          const bpSprite = new Sprite(tex);
-          bpSprite.label = 'bp-icon';
-          bpSprite.width = 16;
-          bpSprite.height = 16;
-          bpSprite.x = SLOT_W - 18;
-          bpSprite.y = 2;
-          bpSprite.alpha = owned ? 1 : 0.3;
-          if (!owned) bpSprite.tint = 0x888888;
-          slot.addChild(bpSprite);
-        }).catch(() => { /* texture not found — skip */ });
-      }
 
       this.container.addChild(slot);
       this.slotContainers.push(slot);
