@@ -110,16 +110,12 @@ export class BuildHotbar {
   /** Callback when a building is selected from the hotbar. */
   onSelect: ((entry: HotbarEntry) => void) | null = null;
 
-  /** Callback when the "+" browser button is activated. */
-  onOpenBrowser: (() => void) | null = null;
-
   private entries: HotbarEntry[] = DEFAULT_HOTBAR;
   private panelBg: Graphics;
   private brackets: Graphics;
   private slotContainers: Container[] = [];
   private slotBgs: Graphics[] = [];
   private headerText: Text;
-  private plusSlot: Container | null = null;
   private lastScreenWidth = 0;
   private lastScreenHeight = 0;
 
@@ -169,12 +165,8 @@ export class BuildHotbar {
     this.container.y = screenHeight - SLOT_H - 28;
   }
 
-  /** Select a slot by number key (1-7), or '0' to open the building browser. Returns the entry or null. */
+  /** Select a slot by number key (1-7). Returns the entry or null. */
   selectByKey(key: string): HotbarEntry | null {
-    if (key === '0') {
-      if (this.onOpenBrowser) this.onOpenBrowser();
-      return null;
-    }
     const idx = parseInt(key, 10) - 1;
     if (idx < 0 || idx >= this.entries.length) return null;
     return this.selectSlot(idx);
@@ -207,7 +199,7 @@ export class BuildHotbar {
     this.highlightSlots();
   }
 
-  /** Get the slot index at a local position. Returns 0-6 for building slots, -2 for '+' button, -1 for nothing. */
+  /** Get the slot index at a local position. Returns 0+ for building slots, -1 for nothing. */
   getSlotAtPosition(localX: number, localY: number): number {
     const slotY = 18; // y offset of slots
     if (localY < slotY || localY > slotY + SLOT_H) return -1;
@@ -215,7 +207,6 @@ export class BuildHotbar {
     const xInSlot = (localX - PADDING) - col * (SLOT_W + SLOT_GAP);
     if (xInSlot < 0 || xInSlot > SLOT_W) return -1;
     if (col >= 0 && col < this.entries.length) return col;
-    if (col === this.entries.length) return -2; // "+" button
     return -1;
   }
 
@@ -291,11 +282,6 @@ export class BuildHotbar {
       this.container.removeChild(slot);
       slot.destroy({ children: true });
     }
-    if (this.plusSlot) {
-      this.container.removeChild(this.plusSlot);
-      this.plusSlot.destroy({ children: true });
-      this.plusSlot = null;
-    }
     this.slotContainers = [];
     this.slotBgs = [];
 
@@ -311,7 +297,7 @@ export class BuildHotbar {
   // ── Private ──────────────────────────────────────────────────────
 
   private panelWidth(): number {
-    return (this.entries.length + 1) * (SLOT_W + SLOT_GAP) + PADDING * 2 - SLOT_GAP;
+    return this.entries.length * (SLOT_W + SLOT_GAP) + PADDING * 2 - SLOT_GAP;
   }
 
   private drawPanel(): void {
@@ -386,36 +372,6 @@ export class BuildHotbar {
       this.slotContainers.push(slot);
     }
 
-    // "+" browser button (last slot)
-    this.plusSlot = new Container();
-    this.plusSlot.x = PADDING + this.entries.length * (SLOT_W + SLOT_GAP);
-    this.plusSlot.y = 18;
-
-    const plusBg = new Graphics();
-    plusBg.roundRect(0, 0, SLOT_W, SLOT_H, 2);
-    plusBg.fill({ color: 0x111010, alpha: 0.5 });
-    plusBg.roundRect(0, 0, SLOT_W, SLOT_H, 2);
-    plusBg.stroke({ color: 0x3a3a2a, alpha: 0.4, width: 1 });
-    this.plusSlot.addChild(plusBg);
-
-    const plusKeyText = new Text({ text: '0', style: slotKeyStyle });
-    plusKeyText.x = 3;
-    plusKeyText.y = 1;
-    this.plusSlot.addChild(plusKeyText);
-
-    const plusLabel = new Text({
-      text: '+',
-      style: new TextStyle({
-        fontFamily: FONT,
-        fontSize: 18,
-        fill: 0x7a6a3a,
-      }),
-    });
-    plusLabel.x = Math.round((SLOT_W - plusLabel.width) / 2);
-    plusLabel.y = Math.round((SLOT_H - plusLabel.height) / 2);
-    this.plusSlot.addChild(plusLabel);
-
-    this.container.addChild(this.plusSlot);
   }
 
   private highlightSlots(): void {

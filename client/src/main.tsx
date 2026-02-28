@@ -286,7 +286,6 @@ async function startGame() {
   uiContainer.addChild(inventoryHud.container);
   uiContainer.addChild(buildHotbar.container);
   uiContainer.addChild(logFeed.container);
-  uiContainer.addChild(buildMenu.container);
   uiContainer.addChild(upgradeTree.container);
   uiContainer.addChild(grimoire.container);
   uiContainer.addChild(debugPanel.container);
@@ -306,7 +305,6 @@ async function startGame() {
   console.log('[client] PixiJS initialized with all renderers');
 
   // ── Initial layout for all UI elements ──────────────────────────
-  buildMenu.resize(screenWidth, screenHeight);
   upgradeTree.resize(screenWidth, screenHeight);
   grimoire.resize(screenWidth, screenHeight);
   debugPanel.resize(screenWidth, screenHeight);
@@ -321,7 +319,6 @@ async function startGame() {
     const h = window.innerHeight;
     lightingRenderer.resize(w, h);
     logFeed.resize(w, h);
-    buildMenu.resize(w, h);
     upgradeTree.resize(w, h);
     grimoire.resize(w, h);
     debugPanel.resize(w, h);
@@ -449,10 +446,6 @@ async function startGame() {
     ghost.rect(-16, -16, 32, 32);
     ghost.fill({ color: 0xd4a017, alpha: 0.15 });
     ghost.visible = true;
-  };
-
-  buildHotbar.onOpenBrowser = () => {
-    buildMenu.open();
   };
 
   // ── Debug panel callback ──────────────────────────────────────
@@ -692,11 +685,6 @@ async function startGame() {
     const hLocalY = e.clientY - hotbarBounds.y;
     const clickedSlot = buildHotbar.getSlotAtPosition(hLocalX, hLocalY);
 
-    if (clickedSlot === -2) {
-      // "+" button clicked — open building browser
-      buildMenu.toggle();
-      return;
-    }
     if (clickedSlot >= 0) {
       // Building slot clicked — select it (enters placement mode)
       buildHotbar.selectSlot(clickedSlot);
@@ -867,7 +855,7 @@ async function startGame() {
     }
 
     // ── Grimoire key handling (intercept before other menus) ──────
-    if (key === 'g' && !buildMenu.visible && !upgradeTree.visible) {
+    if (key === 'g' && !upgradeTree.visible) {
       grimoire.toggle();
       return;
     }
@@ -889,7 +877,7 @@ async function startGame() {
     }
 
     // ── Minimap key handling ─────────────────────────────────────────
-    if (key === 'm' && !buildMenu.visible && !upgradeTree.visible && !grimoire.visible) {
+    if (key === 'm' && !upgradeTree.visible && !grimoire.visible) {
       minimap.toggle();
       return;
     }
@@ -911,7 +899,7 @@ async function startGame() {
     }
 
     // ── Upgrade tree key handling (intercept before normal input) ──
-    if (key === 'u' && !buildMenu.visible) {
+    if (key === 'u') {
       upgradeTree.toggle();
       return;
     }
@@ -936,40 +924,6 @@ async function startGame() {
       return;
     }
 
-    // ── Build menu key handling (intercept before normal input) ───
-    if (key === 'b') {
-      buildMenu.toggle();
-      return;
-    }
-
-    if (buildMenu.visible) {
-      if (key === 'arrowup' || key === 'w') {
-        buildMenu.selectPrev();
-        return;
-      }
-      if (key === 'arrowdown' || key === 's') {
-        buildMenu.selectNext();
-        return;
-      }
-      if (key === 'arrowleft' || key === 'a') {
-        buildMenu.selectLeft();
-        return;
-      }
-      if (key === 'arrowright' || key === 'd') {
-        buildMenu.selectRight();
-        return;
-      }
-      if (key === 'enter') {
-        buildMenu.confirmSelection();
-        return;
-      }
-      if (key === 'escape' || key === 'b') {
-        buildMenu.close();
-        return;
-      }
-      return;
-    }
-
     if (buildMenu.placementMode) {
       if (key === 'escape') {
         buildMenu.cancelPlacement();
@@ -985,11 +939,6 @@ async function startGame() {
         // selectByKey triggers onSelect which enters placement mode
         return;
       }
-    }
-
-    if (key === '0') {
-      buildMenu.toggle();
-      return;
     }
 
     if (!keys.has(key)) {
@@ -1008,7 +957,7 @@ async function startGame() {
     clientTickRef = clientTick;
 
     // Block movement and actions while any overlay is open
-    const menuBlocking = buildMenu.visible || upgradeTree.visible || grimoire.visible || debugPanel.visible || minimap.expanded || buildingPanel.visible || deathScreen.isActive;
+    const menuBlocking = upgradeTree.visible || grimoire.visible || debugPanel.visible || minimap.expanded || buildingPanel.visible || deathScreen.isActive;
 
     // Build movement vector from pressed keys
     const movement = { x: 0, y: 0 };
@@ -1264,7 +1213,6 @@ async function startGame() {
           counts.set(data.building_type, (counts.get(data.building_type) ?? 0) + 1);
         }
         buildingCountsCache = counts;
-        buildMenu.setPlacedBuildingCounts(counts);
         buildHotbar.setPlacedBuildingCounts(counts);
       }
 
@@ -1326,9 +1274,6 @@ async function startGame() {
 
       // ── Project manager state: feed unlock & status data ────────
       if (state.project_manager) {
-        // Update build menu with unlocked building list
-        buildMenu.setUnlockedBuildings(state.project_manager.unlocked_buildings);
-
         // Live-update the building panel if it is open
         if (buildingPanel.visible && buildingPanel.currentBuildingId) {
           const currentId = buildingPanel.currentBuildingId;
@@ -1355,7 +1300,6 @@ async function startGame() {
         const ownedBlueprints = state.inventory
           .filter(i => i.item_type.startsWith('blueprint:'))
           .map(i => i.item_type.slice('blueprint:'.length));
-        buildMenu.setOwnedBlueprints(ownedBlueprints);
         buildHotbar.setOwnedBlueprints(ownedBlueprints);
       }
 
