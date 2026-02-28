@@ -232,7 +232,11 @@ pub enum PlayerAction {
     Interact,
     AssignTask,
     OpenBuildMenu,
-    PlaceBuilding,
+    PlaceBuilding {
+        building_type: BuildingTypeKind,
+        x: f32,
+        y: f32,
+    },
     CrankStart,
     CrankStop,
     RollbackAgent,

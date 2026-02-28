@@ -202,13 +202,14 @@ export interface GameStateUpdate {
 
 // ── Client -> Server messages ──────────────────────────────────────
 
-// Unit-variant enum serializes as plain strings
+// Serde externally-tagged enum: unit variants serialize as plain strings,
+// struct variants as { "VariantName": { ...fields } }
 export type PlayerAction =
   | "Attack"
   | "Interact"
   | "AssignTask"
   | "OpenBuildMenu"
-  | "PlaceBuilding"
+  | { PlaceBuilding: { building_type: BuildingTypeKind; x: number; y: number } }
   | "CrankStart"
   | "CrankStop"
   | "RollbackAgent";
