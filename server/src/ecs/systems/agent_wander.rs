@@ -103,3 +103,150 @@ pub fn agent_wander_system(world: &mut World) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ecs::components::{
+        Agent, AgentState, AgentStats, Position, Velocity, WanderState,
+    };
+    use crate::protocol::AgentStateKind;
+
+    /// Helper: spawn a minimal idle agent with WanderState for testing.
+    fn spawn_idle_agent(world: &mut World, x: f32, y: f32, speed: f32) -> hecs::Entity {
+        world.spawn((
+            Agent,
+            Position { x, y },
+            Velocity::default(),
+            AgentStats {
+                reliability: 0.8,
+                speed,
+                awareness: 80.0,
+                resilience: 60.0,
+            },
+            AgentState {
+                state: AgentStateKind::Idle,
+            },
+            WanderState {
+                home_x: x,
+                home_y: y,
+                waypoint_x: x + 50.0,
+                waypoint_y: y,
+                pause_remaining: 0,
+                wander_radius: 120.0,
+            },
+        ))
+    }
+
+    #[test]
+    fn idle_agent_moves_toward_waypoint() {
+        let mut world = World::new();
+        let entity = spawn_idle_agent(&mut world, 100.0, 100.0, 1.0);
+
+        agent_wander_system(&mut world);
+
+        let pos = world.get::<&Position>(entity).unwrap();
+        assert!(pos.x > 100.0, "Agent should have moved toward waypoint");
+    }
+
+    #[test]
+    fn pausing_agent_does_not_move() {
+        let mut world = World::new();
+        let entity = spawn_idle_agent(&mut world, 100.0, 100.0, 1.0);
+
+        // Set pause
+        {
+            let mut wander = world.get::<&mut WanderState>(entity).unwrap();
+            wander.pause_remaining = 10;
+        }
+
+        agent_wander_system(&mut world);
+
+        let pos = world.get::<&Position>(entity).unwrap();
+        assert_eq!(pos.x, 100.0, "Pausing agent should not move");
+        assert_eq!(pos.y, 100.0);
+
+        // Pause should have decremented
+        let wander = world.get::<&WanderState>(entity).unwrap();
+        assert_eq!(wander.pause_remaining, 9);
+    }
+
+    #[test]
+    fn non_idle_agent_is_skipped() {
+        let mut world = World::new();
+        let entity = world.spawn((
+            Agent,
+            Position { x: 100.0, y: 100.0 },
+            Velocity::default(),
+            AgentStats {
+                reliability: 0.8,
+                speed: 1.0,
+                awareness: 80.0,
+                resilience: 60.0,
+            },
+            AgentState {
+                state: AgentStateKind::Building,
+            },
+            WanderState {
+                home_x: 100.0,
+                home_y: 100.0,
+                waypoint_x: 200.0,
+                waypoint_y: 100.0,
+                pause_remaining: 0,
+                wander_radius: 120.0,
+            },
+        ));
+
+        agent_wander_system(&mut world);
+
+        let pos = world.get::<&Position>(entity).unwrap();
+        assert_eq!(pos.x, 100.0, "Building agent should not wander");
+    }
+
+    #[test]
+    fn agent_pauses_when_reaching_waypoint() {
+        let mut world = World::new();
+        let entity = spawn_idle_agent(&mut world, 100.0, 100.0, 1.0);
+
+        // Place agent right at the waypoint
+        {
+            let mut pos = world.get::<&mut Position>(entity).unwrap();
+            pos.x = 150.0;
+            let mut wander = world.get::<&mut WanderState>(entity).unwrap();
+            wander.waypoint_x = 150.0;
+            wander.waypoint_y = 100.0;
+        }
+
+        agent_wander_system(&mut world);
+
+        let wander = world.get::<&WanderState>(entity).unwrap();
+        assert!(wander.pause_remaining > 0, "Should start pausing at waypoint");
+        let dx = wander.waypoint_x - 100.0;
+        let dy = wander.waypoint_y - 100.0;
+        let dist = (dx * dx + dy * dy).sqrt();
+        assert!(dist <= 120.0, "New waypoint should be within wander radius");
+    }
+
+    #[test]
+    fn speed_scales_with_agent_stats() {
+        let mut world = World::new();
+        let slow = spawn_idle_agent(&mut world, 0.0, 0.0, 0.8);
+        let fast = spawn_idle_agent(&mut world, 0.0, 0.0, 1.7);
+
+        // Both have waypoint at (50, 0)
+        {
+            let mut w = world.get::<&mut WanderState>(fast).unwrap();
+            w.waypoint_x = 50.0;
+            w.waypoint_y = 0.0;
+        }
+
+        agent_wander_system(&mut world);
+
+        let slow_pos = world.get::<&Position>(slow).unwrap();
+        let fast_pos = world.get::<&Position>(fast).unwrap();
+        assert!(
+            fast_pos.x > slow_pos.x,
+            "Faster agent should move further per tick"
+        );
+    }
+}
