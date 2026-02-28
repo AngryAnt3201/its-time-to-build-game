@@ -7,3 +7,4 @@ pub mod spawn;
 pub mod combat;
 pub mod projectile;
 pub mod placement;
+pub mod camp_spawner;

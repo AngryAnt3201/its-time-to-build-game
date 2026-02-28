@@ -57,6 +57,7 @@ export interface AgentData {
   xp: number;
   level: number;
   recruitable_cost: number | null;
+  bound: boolean;
 }
 
 export interface BuildingData {
@@ -215,6 +216,13 @@ export interface CombatEvent {
   rogue_type: RogueTypeKind | null;
 }
 
+// ── Chest rewards ─────────────────────────────────────────────────
+
+export interface ChestReward {
+  item_type: string;
+  count: number;
+}
+
 // ── Wheel snapshot ──────────────────────────────────────────────
 
 export interface WheelSnapshot {
@@ -247,6 +255,8 @@ export interface GameStateUpdate {
   player_hit_damage: number;
   inventory: InventoryItem[];
   purchased_upgrades: string[];
+  opened_chests: [number, number][];
+  chest_rewards: ChestReward[];
 }
 
 // ── Server → Client message wrapper ────────────────────────────────
@@ -278,7 +288,7 @@ export type PlayerAction =
   | { EquipArmor: { armor_id: string } }
   // Crafting actions
   | { CraftItem: { recipe_id: string } }
-  | { OpenChest: { entity_id: number } }
+  | { OpenChest: { wx: number; wy: number } }
   | { PurchaseUpgrade: { upgrade_id: string } }
   | { AddInventoryItem: { item_type: string; count: number } }
   | { RemoveInventoryItem: { item_type: string; count: number } }

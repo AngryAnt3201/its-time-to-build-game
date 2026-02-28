@@ -1,4 +1,4 @@
-import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Text, Texture, TextStyle } from 'pixi.js';
 
 const FONT = '"IBM Plex Mono", monospace';
 
@@ -21,6 +21,22 @@ interface SwingArc {
   maxLife: number;
 }
 
+interface ChestBurstParticle {
+  gfx: Graphics;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+}
+
+interface FloatingRewardIcon {
+  container: Container;
+  life: number;
+  maxLife: number;
+  vy: number;
+  startDelay: number;
+}
+
 export class CombatVFX {
   /** Add to worldContainer for in-world effects */
   readonly worldLayer: Container;
@@ -30,9 +46,12 @@ export class CombatVFX {
   private damageNumbers: DamageNumber[] = [];
   private deathParticles: DeathParticle[] = [];
   private swingArcs: SwingArc[] = [];
+  private chestBurstParticles: ChestBurstParticle[] = [];
+  private floatingRewards: FloatingRewardIcon[] = [];
   private shakeFrames = 0;
   private shakeIntensity = 0;
   private vignette: Graphics;
+  private iconCache: Map<string, Texture> = new Map();
 
   constructor() {
     this.worldLayer = new Container();
@@ -136,6 +155,129 @@ export class CombatVFX {
     }
   }
 
+  /** Resolve an item_type to its icon path */
+  private getIconPath(itemType: string): string | null {
+    if (itemType === 'token') return '/icons/hud/token_symbol.png';
+    if (itemType.startsWith('material:')) {
+      const mat = itemType.slice('material:'.length);
+      return `/icons/crafting_materials/${mat}.png`;
+    }
+    if (itemType.startsWith('blueprint:')) {
+      const bp = itemType.slice('blueprint:'.length);
+      const BLUEPRINT_ICONS: Record<string, string> = {
+        Pylon: '/blueprints/fc1246.png',
+        ComputeFarm: '/blueprints/fc1256.png',
+        TodoApp: '/blueprints/fc1261.png',
+        Calculator: '/blueprints/fc1262.png',
+        LandingPage: '/blueprints/fc1263.png',
+        WeatherDashboard: '/blueprints/fc1267.png',
+        ChatApp: '/blueprints/fc1269.png',
+        KanbanBoard: '/blueprints/fc1272.png',
+        EcommerceStore: '/blueprints/fc1276.png',
+        AiImageGenerator: '/blueprints/fc1277.png',
+        ApiDashboard: '/blueprints/fc1278.png',
+        Blockchain: '/blueprints/fc1279.png',
+      };
+      return BLUEPRINT_ICONS[bp] ?? null;
+    }
+    return null;
+  }
+
+  /** Spawn golden burst particles and floating reward icons above the player */
+  async spawnChestRewards(
+    px: number, py: number,
+    rewards: { item_type: string; count: number }[],
+  ): Promise<void> {
+    // Golden particle burst
+    const burstCount = 12;
+    for (let i = 0; i < burstCount; i++) {
+      const angle = (i / burstCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const speed = 0.8 + Math.random() * 1.2;
+      const gfx = new Graphics();
+      const size = 1.5 + Math.random() * 1.5;
+      gfx.circle(0, 0, size);
+      gfx.fill(Math.random() > 0.3 ? 0xffd700 : 0xffa500);
+      gfx.x = px;
+      gfx.y = py;
+      this.worldLayer.addChild(gfx);
+      const maxLife = 18 + Math.floor(Math.random() * 12);
+      this.chestBurstParticles.push({
+        gfx,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 0.5,
+        life: maxLife,
+        maxLife,
+      });
+    }
+
+    // Floating reward icons above the player
+    for (let i = 0; i < rewards.length; i++) {
+      const reward = rewards[i];
+      const iconPath = this.getIconPath(reward.item_type);
+
+      const container = new Container();
+
+      // Try to load and show icon
+      if (iconPath) {
+        let tex = this.iconCache.get(iconPath);
+        if (!tex) {
+          try {
+            tex = await Assets.load<Texture>(iconPath);
+            this.iconCache.set(iconPath, tex);
+          } catch { /* fallback to text only */ }
+        }
+        if (tex) {
+          const spr = new Sprite(tex);
+          spr.width = 12;
+          spr.height = 12;
+          spr.anchor.set(0.5);
+          spr.x = 0;
+          spr.y = 0;
+          container.addChild(spr);
+        }
+      }
+
+      // Count label to the right of the icon
+      const label = reward.item_type === 'token'
+        ? `+${reward.count}`
+        : reward.count > 1 ? `x${reward.count}` : '';
+      if (label) {
+        const text = new Text({
+          text: label,
+          style: new TextStyle({
+            fontFamily: FONT,
+            fontSize: 6,
+            fill: reward.item_type === 'token' ? 0xffd700 : 0xffffff,
+            fontWeight: 'bold',
+            stroke: { color: 0x000000, width: 2 },
+          }),
+        });
+        text.anchor.set(0, 0.5);
+        text.x = 8;
+        text.y = 0;
+        container.addChild(text);
+      }
+
+      // Spread items horizontally, stagger vertically with delay
+      const spread = rewards.length > 1
+        ? (i - (rewards.length - 1) / 2) * 14
+        : 0;
+      container.x = px + spread;
+      container.y = py - 12;
+      container.alpha = 0;
+
+      this.worldLayer.addChild(container);
+      const maxLife = 60;
+      this.floatingRewards.push({
+        container,
+        life: maxLife,
+        maxLife,
+        vy: -0.25,
+        startDelay: i * 4,
+      });
+    }
+  }
+
   /** Trigger screen shake */
   triggerShake(intensity: number, frames: number): void {
     this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
@@ -200,6 +342,42 @@ export class CombatVFX {
         this.worldLayer.removeChild(p.gfx);
         p.gfx.destroy();
         this.deathParticles.splice(i, 1);
+      }
+    }
+
+    // Chest burst particles
+    for (let i = this.chestBurstParticles.length - 1; i >= 0; i--) {
+      const p = this.chestBurstParticles[i];
+      p.life--;
+      p.gfx.x += p.vx;
+      p.gfx.y += p.vy;
+      p.vy += 0.03; // slight gravity
+      p.gfx.alpha = p.life / p.maxLife;
+      p.gfx.scale.set(p.life / p.maxLife);
+      if (p.life <= 0) {
+        this.worldLayer.removeChild(p.gfx);
+        p.gfx.destroy();
+        this.chestBurstParticles.splice(i, 1);
+      }
+    }
+
+    // Floating reward icons
+    for (let i = this.floatingRewards.length - 1; i >= 0; i--) {
+      const r = this.floatingRewards[i];
+      if (r.startDelay > 0) {
+        r.startDelay--;
+        continue;
+      }
+      r.life--;
+      r.container.y += r.vy;
+      // Fade in for first 10 frames, fade out for last 15
+      const fadeIn = Math.min(1, (r.maxLife - r.life) / 10);
+      const fadeOut = Math.min(1, r.life / 15);
+      r.container.alpha = fadeIn * fadeOut;
+      if (r.life <= 0) {
+        this.worldLayer.removeChild(r.container);
+        r.container.destroy({ children: true });
+        this.floatingRewards.splice(i, 1);
       }
     }
 

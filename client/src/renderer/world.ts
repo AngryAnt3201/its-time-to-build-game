@@ -107,7 +107,7 @@ const OBJECTS_LARGE: ObjectDef[] = [
 const ALL_OBJECTS = [...OBJECTS_SMALL, ...OBJECTS_MEDIUM, ...OBJECTS_LARGE];
 
 // ── Hash & noise ────────────────────────────────────────────────────
-function hash(x: number, y: number, seed = 0): number {
+export function hash(x: number, y: number, seed = 0): number {
   let h = (x * 374761393 + y * 668265263 + seed) | 0;
   h = ((h ^ (h >> 13)) * 1274126177) | 0;
   return (h ^ (h >> 16)) >>> 0;
@@ -227,6 +227,8 @@ export class WorldRenderer {
   private loaded = false;
   private viewDistance = 3;
   private _debugBoundaries = false;
+  /** Set of "wx,wy" keys for chests that have been opened and should not render. */
+  private _openedChests: Set<string> = new Set();
 
   constructor() {
     this.container = new Container();
@@ -546,6 +548,9 @@ export class WorldRenderer {
         const roll = hash(wx, wy, CHEST_SEED) % 100;
         if (roll >= 10) continue;
 
+        // Skip already-opened chests
+        if (this._openedChests.has(`${wx},${wy}`)) continue;
+
         const tex = this.objectTextures.get('crystal2.png');
         if (!tex) continue;
 
@@ -557,6 +562,7 @@ export class WorldRenderer {
         glow.fill({ color: 0xd4a017, alpha: 0.15 });
         glow.circle(glowX, glowY, 12);
         glow.fill({ color: 0xd4a017, alpha: 0.2 });
+        glow.label = `chest_glow_${wx}_${wy}`;
         layer.addChild(glow);
 
         const spr = new Sprite(tex);
@@ -578,6 +584,30 @@ export class WorldRenderer {
 
         layer.addChild(spr);
       }
+    }
+  }
+
+  /** Remove an opened chest sprite and its glow from the rendered world. */
+  removeChest(wx: number, wy: number): void {
+    this._openedChests.add(`${wx},${wy}`);
+
+    // Find which chunk this chest belongs to
+    const cx = Math.floor(wx / CHUNK_SIZE);
+    const cy = Math.floor(wy / CHUNK_SIZE);
+    const chunk = this.chunks.get(`${cx},${cy}`);
+    if (!chunk) return;
+
+    const spriteLabel = `chest_${wx}_${wy}`;
+    const glowLabel = `chest_glow_${wx}_${wy}`;
+    const toRemove: Container[] = [];
+    for (const child of chunk.objectLayer.children) {
+      if (child.label === spriteLabel || child.label === glowLabel) {
+        toRemove.push(child as Container);
+      }
+    }
+    for (const child of toRemove) {
+      chunk.objectLayer.removeChild(child);
+      child.destroy();
     }
   }
 

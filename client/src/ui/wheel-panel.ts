@@ -23,9 +23,13 @@ export class WheelPanel {
   private readonly agentBonusEl: HTMLSpanElement;
   private readonly heatFill: HTMLDivElement;
   private readonly heatLabel: HTMLSpanElement;
+  private readonly spinBtn: HTMLButtonElement;
+  private readonly spinCooldownFill: HTMLDivElement;
   private readonly upgradeBtn: HTMLButtonElement;
   private readonly agentSlotEl: HTMLDivElement;
   private readonly callbacks: WheelPanelCallbacks;
+  private spinning = false;
+  private spinTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(callbacks: WheelPanelCallbacks) {
     this.callbacks = callbacks;
@@ -152,6 +156,71 @@ export class WheelPanel {
     heatRow.appendChild(heatBarBg);
     heatRow.appendChild(this.heatLabel);
 
+    // ── Spin button with cooldown overlay ─────────────────────────
+    const spinWrapper = document.createElement('div');
+    Object.assign(spinWrapper.style, { position: 'relative', overflow: 'hidden', borderRadius: '6px' });
+
+    this.spinBtn = document.createElement('button');
+    Object.assign(this.spinBtn.style, {
+      width: '100%',
+      padding: '14px 16px',
+      fontSize: '16px',
+      fontFamily: FONT,
+      fontWeight: 'bold',
+      background: 'linear-gradient(180deg, #3a3018, #2a2010)',
+      color: gold,
+      border: `2px solid ${gold}`,
+      borderRadius: '6px',
+      cursor: 'pointer',
+      textAlign: 'center',
+      letterSpacing: '2px',
+      textTransform: 'uppercase',
+      position: 'relative',
+      zIndex: '1',
+      transition: 'background 0.15s ease, transform 0.1s ease',
+    });
+    this.spinBtn.textContent = 'Spin';
+
+    this.spinCooldownFill = document.createElement('div');
+    Object.assign(this.spinCooldownFill.style, {
+      position: 'absolute',
+      bottom: '0',
+      left: '0',
+      width: '100%',
+      height: '0%',
+      background: 'linear-gradient(180deg, rgba(255,68,0,0.3), rgba(204,102,0,0.15))',
+      transition: 'height 0.2s ease',
+      pointerEvents: 'none',
+      zIndex: '0',
+      borderRadius: '6px',
+    });
+
+    spinWrapper.appendChild(this.spinCooldownFill);
+    spinWrapper.appendChild(this.spinBtn);
+
+    this.spinBtn.addEventListener('mousedown', () => {
+      if (!this.spinBtn.disabled) {
+        this.startSpin();
+        this.spinBtn.style.transform = 'scale(0.97)';
+      }
+    });
+    this.spinBtn.addEventListener('mouseup', () => {
+      this.spinBtn.style.transform = 'scale(1)';
+    });
+    this.spinBtn.addEventListener('mouseleave', () => {
+      this.spinBtn.style.transform = 'scale(1)';
+    });
+    this.spinBtn.addEventListener('mouseenter', () => {
+      if (!this.spinBtn.disabled) {
+        this.spinBtn.style.background = 'linear-gradient(180deg, #4a4020, #3a3018)';
+      }
+    });
+    this.spinBtn.addEventListener('mouseleave', () => {
+      if (!this.spinBtn.disabled) {
+        this.spinBtn.style.background = 'linear-gradient(180deg, #3a3018, #2a2010)';
+      }
+    });
+
     // Upgrade button
     this.upgradeBtn = document.createElement('button');
     Object.assign(this.upgradeBtn.style, {
@@ -212,6 +281,7 @@ export class WheelPanel {
     body.appendChild(rateRow.row);
     body.appendChild(agentBonusRow.row);
     body.appendChild(heatRow);
+    body.appendChild(spinWrapper);
     body.appendChild(this.upgradeBtn);
     body.appendChild(agentSection);
 
@@ -231,6 +301,7 @@ export class WheelPanel {
   close(): void {
     this.container.style.display = 'none';
     this.visible = false;
+    this.stopSpin();
     this.callbacks.onClose();
   }
 
@@ -242,6 +313,30 @@ export class WheelPanel {
     const heatPct = wheel.max_heat > 0 ? (wheel.heat / wheel.max_heat) * 100 : 0;
     this.heatFill.style.width = `${Math.min(100, heatPct)}%`;
     this.heatLabel.textContent = `${Math.round(wheel.heat)}/${wheel.max_heat}`;
+
+    // Spin button cooldown based on heat
+    this.spinCooldownFill.style.height = `${Math.min(100, heatPct)}%`;
+    const overheated = wheel.heat >= wheel.max_heat;
+    if (overheated) {
+      this.spinBtn.disabled = true;
+      this.spinBtn.style.cursor = 'not-allowed';
+      this.spinBtn.style.opacity = '0.5';
+      this.spinBtn.textContent = 'Overheated';
+      this.spinBtn.style.color = '#ff4400';
+      this.stopSpin();
+    } else if (this.spinning) {
+      this.spinBtn.textContent = 'Spinning...';
+      this.spinBtn.style.color = '#ffcc44';
+      this.spinBtn.style.opacity = '1';
+      this.spinBtn.style.cursor = 'pointer';
+      this.spinBtn.disabled = false;
+    } else {
+      this.spinBtn.disabled = false;
+      this.spinBtn.style.cursor = 'pointer';
+      this.spinBtn.style.opacity = '1';
+      this.spinBtn.textContent = 'Spin';
+      this.spinBtn.style.color = gold;
+    }
 
     if (wheel.upgrade_cost != null) {
       this.upgradeBtn.textContent = `Upgrade (${wheel.upgrade_cost} tokens)`;
@@ -263,6 +358,26 @@ export class WheelPanel {
       this.agentSlotEl.textContent = '(none)';
       this.agentSlotEl.style.color = '#666';
     }
+  }
+
+  // ── Spin mechanics ─────────────────────────────────────────────
+
+  private startSpin(): void {
+    if (this.spinning) return;
+    this.spinning = true;
+    this.callbacks.onAction('CrankStart');
+    // Auto-stop after 1.5 seconds per spin
+    this.spinTimer = setTimeout(() => this.stopSpin(), 1500);
+  }
+
+  private stopSpin(): void {
+    if (!this.spinning) return;
+    this.spinning = false;
+    if (this.spinTimer) {
+      clearTimeout(this.spinTimer);
+      this.spinTimer = null;
+    }
+    this.callbacks.onAction('CrankStop');
   }
 
   // ── Private helpers ─────────────────────────────────────────────

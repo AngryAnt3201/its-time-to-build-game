@@ -154,6 +154,8 @@ pub fn create_world() -> (World, GameState) {
         player_dead: false,
         death_tick: None,
         inventory: Vec::new(),
+        opened_chests: std::collections::HashSet::new(),
+        spawned_camps: std::collections::HashSet::new(),
     };
 
     (world, game_state)

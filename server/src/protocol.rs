@@ -63,6 +63,7 @@ pub enum EntityData {
         xp: u64,
         level: u32,
         recruitable_cost: Option<i64>,
+        bound: bool,
     },
     Building {
         building_type: BuildingTypeKind,
@@ -248,6 +249,15 @@ pub struct CombatEvent {
     pub rogue_type: Option<RogueTypeKind>,
 }
 
+// ── Chest rewards ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChestReward {
+    /// e.g. "token", "material:iron_powder", "blueprint:TodoApp"
+    pub item_type: String,
+    pub count: u32,
+}
+
 // ── Inventory ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -276,6 +286,8 @@ pub struct GameStateUpdate {
     pub player_hit_damage: i32,
     pub inventory: Vec<InventoryItem>,
     pub purchased_upgrades: Vec<String>,
+    pub opened_chests: Vec<(i32, i32)>,
+    pub chest_rewards: Vec<ChestReward>,
 }
 
 // ── Client → Server messages ───────────────────────────────────────
@@ -306,7 +318,7 @@ pub enum PlayerAction {
 
     // Crafting actions
     CraftItem { recipe_id: String },
-    OpenChest { entity_id: u64 },
+    OpenChest { wx: i32, wy: i32 },
     PurchaseUpgrade { upgrade_id: String },
     AddInventoryItem { item_type: String, count: u32 },
     RemoveInventoryItem { item_type: String, count: u32 },

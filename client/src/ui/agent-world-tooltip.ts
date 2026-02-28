@@ -47,6 +47,7 @@ export interface AgentWorldData {
   model_lore_name: string;
   xp: number;
   level: number;
+  bound?: boolean;
 }
 
 export class AgentWorldTooltip {
@@ -87,7 +88,7 @@ export class AgentWorldTooltip {
     document.body.appendChild(this.container);
   }
 
-  show(agent: AgentWorldData, screenX: number, screenY: number, buildingId: string, buildingName: string): void {
+  show(agent: AgentWorldData, screenX: number, screenY: number, buildingId: string, buildingName: string, noPylon?: boolean): void {
     if (this.hideTimer) {
       clearTimeout(this.hideTimer);
       this.hideTimer = null;
@@ -153,6 +154,14 @@ export class AgentWorldTooltip {
     modelEl.style.cssText = 'color: #6a6a5a; font-size: 9px; margin-bottom: 6px;';
     this.container.appendChild(modelEl);
 
+    // Bound agent indicator
+    if (agent.bound) {
+      const boundEl = document.createElement('div');
+      boundEl.innerHTML = '<span style="color: #00ccff; font-weight: bold;">BOUND AGENT</span> \u2014 Camp Guardian';
+      boundEl.style.cssText = 'color: #5a8a9a; font-size: 9px; margin-bottom: 4px; padding: 2px 4px; background: rgba(0, 204, 255, 0.08); border: 1px solid rgba(0, 204, 255, 0.2); border-radius: 2px;';
+      this.container.appendChild(boundEl);
+    }
+
     // State line
     const stateEl = document.createElement('div');
     stateEl.innerHTML = `State: <span style="color: ${stateColor}; font-weight: bold;">${isDead ? 'DEAD' : agent.state}</span>`;
@@ -202,6 +211,14 @@ export class AgentWorldTooltip {
     xpEl.textContent = `XP: ${agent.xp}  Lv.${agent.level}`;
     xpEl.style.cssText = 'color: #5a5a4a; font-size: 9px; margin-bottom: 8px;';
     this.container.appendChild(xpEl);
+
+    // No-pylon warning — show when assigned to a building without pylon coverage
+    if (noPylon && buildingId) {
+      const noPylonEl = document.createElement('div');
+      noPylonEl.style.cssText = 'color: #aa6633; font-size: 9px; margin-bottom: 6px; line-height: 1.3;';
+      noPylonEl.innerHTML = '\u26a0 No Pylon nearby \u2014 terminal hidden';
+      this.container.appendChild(noPylonEl);
+    }
 
     // "Open Terminal" button — only if agent is Building
     if (agent.state === 'Building') {

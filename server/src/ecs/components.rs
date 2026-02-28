@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::game::upgrades::UpgradeState;
 use crate::protocol::{AgentStateKind, AgentTierKind, BuildingTypeKind, RogueTypeKind, TaskAssignment};
 
@@ -200,6 +201,20 @@ pub struct Recruitable {
     pub cost: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct BoundAgent;
+
+#[derive(Debug, Clone)]
+pub struct GuardianRogue {
+    pub home_x: f32,
+    pub home_y: f32,
+    pub leash_radius: f32,
+    pub bound_agent_entity: hecs::Entity,
+    pub patrol_waypoint_x: f32,
+    pub patrol_waypoint_y: f32,
+    pub patrol_pause: u32,
+}
+
 // ── Building Components ──────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -318,6 +333,8 @@ pub struct GameState {
     pub player_dead: bool,
     pub death_tick: Option<u64>,
     pub inventory: Vec<crate::protocol::InventoryItem>,
+    pub opened_chests: HashSet<(i32, i32)>,
+    pub spawned_camps: HashSet<(i32, i32)>,
 }
 
 impl GameState {

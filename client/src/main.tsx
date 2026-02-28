@@ -3,7 +3,7 @@ import { TitleScreen } from './ui/title-screen/TitleScreen';
 import { Application, Container, Graphics } from 'pixi.js';
 import { Connection } from './network/connection';
 import { EntityRenderer } from './renderer/entities';
-import { WorldRenderer, isWalkable, TILE_PX } from './renderer/world';
+import { WorldRenderer, isWalkable, hash, TILE_PX } from './renderer/world';
 import { LightingRenderer, type LightSource } from './renderer/lighting';
 import { HUD } from './ui/hud';
 import { AgentsHUD } from './ui/agents-hud';
@@ -133,6 +133,9 @@ async function startGame() {
   // ── Persistent entity map (tracks buildings across ticks) ─────────
   const entityMap: Map<number, EntityDelta> = new Map();
 
+  // ── Opened chests set (synced from server) ────────────────────────
+  const openedChests: Set<string> = new Set();
+
   // ── Building counts cache (for tooltip cost display) ──────────────
   let buildingCountsCache: Map<BuildingTypeKind, number> = new Map();
 
@@ -168,6 +171,15 @@ async function startGame() {
     onAction: (action) => {
       const input: PlayerInput = { tick: clientTick, movement: { x: 0, y: 0 }, action, target: null };
       connection.sendInput(input);
+
+      // Also update client-side HUD for equip actions from crafting
+      if (typeof action === 'object') {
+        if ('EquipWeapon' in action) {
+          equipmentHud.equipWeapon((action as { EquipWeapon: { weapon_id: string } }).EquipWeapon.weapon_id);
+        } else if ('EquipArmor' in action) {
+          equipmentHud.equipArmour((action as { EquipArmor: { armor_id: string } }).EquipArmor.armor_id);
+        }
+      }
     },
     onClose: () => {},
   });
@@ -457,6 +469,15 @@ async function startGame() {
       target: null,
     };
     connection.sendInput(input);
+
+    // Also update client-side HUD for equip actions
+    if (typeof action === 'object') {
+      if ('EquipWeapon' in action) {
+        equipmentHud.equipWeapon((action as { EquipWeapon: { weapon_id: string } }).EquipWeapon.weapon_id);
+      } else if ('EquipArmor' in action) {
+        equipmentHud.equipArmour((action as { EquipArmor: { armor_id: string } }).EquipArmor.armor_id);
+      }
+    }
   };
 
   debugPanel.onToggleBoundaries = () => {
@@ -622,7 +643,7 @@ async function startGame() {
     // ── Agent hover detection (for agent world tooltip) ────────────────
     if (!terminalOverlay.visible) {
       let nearestAgentId: number | null = null;
-      type AgentEntityData = { name: string; tier: string; state: string; health_pct: number; morale_pct: number; stars: number; turns_used: number; max_turns: number; model_lore_name: string; xp: number; level: number };
+      type AgentEntityData = { name: string; tier: string; state: string; health_pct: number; morale_pct: number; stars: number; turns_used: number; max_turns: number; model_lore_name: string; xp: number; level: number; bound?: boolean };
       let nearestAgentDist = 32; // hover range in world pixels
       let nearestAgentData: AgentEntityData | null = null;
 
@@ -667,6 +688,7 @@ async function startGame() {
           model_lore_name: nearestAgentData.model_lore_name,
           xp: nearestAgentData.xp,
           level: nearestAgentData.level,
+          bound: nearestAgentData.bound,
         };
 
         const agentNoPylon = agentBuildingId ? !isBuildingNearPylon(agentBuildingId, entityMap) : false;
@@ -983,25 +1005,39 @@ async function startGame() {
         const px = player.x;
         const py = player.y;
 
-        // Check for nearby chest entities first
+        // Check for nearby chests using deterministic placement
         if (!interactedWithBuilding) {
-          for (const entity of entityMap.values()) {
-            if (entity.kind !== 'Item') continue;
-            const data = (entity.data as { Item?: { item_type: string } }).Item;
-            if (!data || data.item_type !== 'chest') continue;
-            const dx = entity.position.x - px;
-            const dy = entity.position.y - py;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 40) {
-              const input: PlayerInput = {
-                tick: clientTick,
-                movement: { x: 0, y: 0 },
-                action: { OpenChest: { entity_id: entity.id } },
-                target: null,
-              };
-              connection.sendInput(input);
-              interactedWithBuilding = true;
-              break;
+          const CHEST_SEED = 55555;
+          const STEP = 8;
+          const playerTx = Math.floor(px / TILE_PX);
+          const playerTy = Math.floor(py / TILE_PX);
+          // Snap to nearest STEP-aligned grid, then check the 3x3 grid of candidates
+          const baseTx = Math.floor(playerTx / STEP) * STEP;
+          const baseTy = Math.floor(playerTy / STEP) * STEP;
+          for (let gy = -1; gy <= 1 && !interactedWithBuilding; gy++) {
+            for (let gx = -1; gx <= 1; gx++) {
+              const wx = baseTx + gx * STEP;
+              const wy = baseTy + gy * STEP;
+              if (!isWalkable(wx, wy)) continue;
+              if ((hash(wx, wy, CHEST_SEED) % 100) >= 10) continue;
+              if (openedChests.has(`${wx},${wy}`)) continue;
+              // Check pixel distance
+              const chestPx = wx * TILE_PX + TILE_PX / 2;
+              const chestPy = wy * TILE_PX + TILE_PX / 2;
+              const dx = chestPx - px;
+              const dy = chestPy - py;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < 40) {
+                const input: PlayerInput = {
+                  tick: clientTick,
+                  movement: { x: 0, y: 0 },
+                  action: { OpenChest: { wx, wy } },
+                  target: null,
+                };
+                connection.sendInput(input);
+                interactedWithBuilding = true;
+                break;
+              }
             }
           }
         }
@@ -1293,6 +1329,23 @@ async function startGame() {
       if (state.purchased_upgrades) {
         upgradeTree.updateState(state.economy.balance, state.purchased_upgrades);
         craftingModal.updatePurchasedUpgrades(state.purchased_upgrades);
+      }
+
+      // ── Sync opened chests from server ────────────────────────────
+      if (state.opened_chests) {
+        for (const [wx, wy] of state.opened_chests) {
+          const key = `${wx},${wy}`;
+          if (!openedChests.has(key)) {
+            openedChests.add(key);
+            // Remove chest sprite from world renderer
+            worldRenderer.removeChest(wx, wy);
+          }
+        }
+      }
+
+      // ── Chest reward VFX ──────────────────────────────────────────
+      if (state.chest_rewards && state.chest_rewards.length > 0) {
+        combatVFX.spawnChestRewards(pos.x, pos.y, state.chest_rewards);
       }
 
       // ── Sync blueprint ownership to build menu & hotbar ─────────────

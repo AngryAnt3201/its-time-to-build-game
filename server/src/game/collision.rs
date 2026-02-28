@@ -81,6 +81,12 @@ pub fn is_walkable(wx: i32, wy: i32) -> bool {
     true
 }
 
+/// Public wrapper around the hash function for chest validation.
+/// Must match the client's `hash(wx, wy, CHEST_SEED)` exactly.
+pub fn chest_hash(x: i32, y: i32, seed: i32) -> u32 {
+    hash(x, y, seed)
+}
+
 /// Convert pixel position to tile coordinate.
 pub fn pixel_to_tile(px: f32) -> i32 {
     (px / TILE_PX).floor() as i32

@@ -61,6 +61,7 @@ const AGENT_STATE_COLORS: Record<AgentStateKind, number> = {
   Defending: 0xcc4444,
   Critical: 0xff0000,
   Unresponsive: 0x444444,
+  Dormant: 0x666688,
 };
 
 // ── Layout constants ─────────────────────────────────────────────────

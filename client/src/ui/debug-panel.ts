@@ -164,6 +164,12 @@ export class DebugPanel {
   private boundariesOn = false;
   private fullLightOn = false;
 
+  // Scroll state
+  private scrollOffset = 0;
+  private maxScroll = 0;
+  private screenHeight = 800;
+  private maskGfx: Graphics;
+
   constructor() {
     this.container = new Container();
     this.container.label = 'debug-panel';
@@ -175,6 +181,14 @@ export class DebugPanel {
       e.stopPropagation();
     });
 
+    // Scroll with mouse wheel
+    this.container.on('wheel', (e: { deltaY: number; stopPropagation: () => void; preventDefault: () => void }) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.scrollOffset = Math.max(0, Math.min(this.maxScroll, this.scrollOffset + e.deltaY));
+      this.contentContainer.y = PANEL_PADDING - this.scrollOffset;
+    });
+
     // ── Panel background ──────────────────────────────────────────
     this.panel = new Graphics();
     this.container.addChild(this.panel);
@@ -184,6 +198,11 @@ export class DebugPanel {
     this.contentContainer.x = PANEL_PADDING;
     this.contentContainer.y = PANEL_PADDING;
     this.container.addChild(this.contentContainer);
+
+    // ── Scroll mask ───────────────────────────────────────────────
+    this.maskGfx = new Graphics();
+    this.container.addChild(this.maskGfx);
+    this.contentContainer.mask = this.maskGfx;
 
     this.buildContent();
   }
@@ -200,10 +219,32 @@ export class DebugPanel {
     this.container.visible = false;
   }
 
-  resize(width: number, _height: number): void {
+  resize(width: number, height: number): void {
+    this.screenHeight = height;
     // Position panel on the right side of the screen
     this.container.x = width - PANEL_WIDTH - 20;
     this.container.y = 20;
+
+    // Cap visible panel height to screen
+    const maxVisibleH = height - 40;
+    const visibleH = Math.min(this.panelHeight, maxVisibleH);
+
+    // Redraw panel background to visible height
+    this.panel.clear();
+    this.panel.roundRect(0, 0, PANEL_WIDTH, visibleH, 4);
+    this.panel.fill({ color: 0x1a1510, alpha: 0.95 });
+    this.panel.roundRect(0, 0, PANEL_WIDTH, visibleH, 4);
+    this.panel.stroke({ color: 0x3a3020, alpha: 0.8, width: 1 });
+
+    // Update mask to clip content to visible area
+    this.maskGfx.clear();
+    this.maskGfx.rect(0, 0, PANEL_WIDTH, visibleH);
+    this.maskGfx.fill({ color: 0xffffff });
+
+    // Update max scroll
+    this.maxScroll = Math.max(0, this.panelHeight - visibleH);
+    this.scrollOffset = Math.min(this.scrollOffset, this.maxScroll);
+    this.contentContainer.y = PANEL_PADDING - this.scrollOffset;
   }
 
   /** Update the panel with live server debug state. */
@@ -462,6 +503,122 @@ export class DebugPanel {
     y = layoutRow(c, rogueButtons2, 0, y, BUTTON_GAP);
     y += SECTION_GAP;
 
+    // ── MATERIALS section ────────────────────────────────────────
+    const matsLabel = new Text({ text: 'MATERIALS', style: sectionStyle });
+    matsLabel.y = y;
+    c.addChild(matsLabel);
+    y += 18;
+
+    const materialIds: { label: string; id: string }[] = [
+      { label: 'Iron', id: 'iron_powder' },
+      { label: 'Wood', id: 'wood' },
+      { label: 'Ring', id: 'metal_ring' },
+      { label: 'Ore', id: 'ore_coin' },
+    ];
+    const matButtons1 = materialIds.map((m) => createButton(
+      { label: m.label, action: { AddInventoryItem: { item_type: `material:${m.id}`, count: 5 } } as PlayerAction, width: 48 },
+      (a) => this.fireAction(a),
+    ));
+    y = layoutRow(c, matButtons1, 0, y, BUTTON_GAP);
+    y += BUTTON_GAP;
+
+    const materialIds2: { label: string; id: string }[] = [
+      { label: 'Gold', id: 'liquid_gold' },
+      { label: 'Mana', id: 'mana' },
+    ];
+    const matButtons2 = materialIds2.map((m) => createButton(
+      { label: m.label, action: { AddInventoryItem: { item_type: `material:${m.id}`, count: 5 } } as PlayerAction, width: 48 },
+      (a) => this.fireAction(a),
+    ));
+    // +ALL button grants 10 of each material
+    const allMatsBtn = createButton(
+      { label: '+ALL', action: { AddInventoryItem: { item_type: 'material:iron_powder', count: 10 } } as PlayerAction, width: 48 },
+      () => {
+        const allMats = ['iron_powder', 'wood', 'metal_ring', 'ore_coin', 'liquid_gold', 'mana'];
+        for (const mat of allMats) {
+          this.fireAction({ AddInventoryItem: { item_type: `material:${mat}`, count: 10 } } as PlayerAction);
+        }
+      },
+    );
+    y = layoutRow(c, [...matButtons2, allMatsBtn], 0, y, BUTTON_GAP);
+    y += SECTION_GAP;
+
+    // ── BLUEPRINTS section ──────────────────────────────────────
+    const bpLabel = new Text({ text: 'BLUEPRINTS', style: sectionStyle });
+    bpLabel.y = y;
+    c.addChild(bpLabel);
+    y += 18;
+
+    const allBlueprintsBtn = createButton(
+      { label: 'Grant All Blueprints', action: { AddInventoryItem: { item_type: 'blueprint:TodoApp', count: 1 } } as PlayerAction, width: 140 },
+      () => {
+        const bps = [
+          'Pylon', 'ComputeFarm', 'TodoApp', 'Calculator', 'LandingPage',
+          'WeatherDashboard', 'ChatApp', 'KanbanBoard',
+          'EcommerceStore', 'AiImageGenerator', 'ApiDashboard', 'Blockchain',
+        ];
+        for (const bp of bps) {
+          this.fireAction({ AddInventoryItem: { item_type: `blueprint:${bp}`, count: 1 } } as PlayerAction);
+        }
+      },
+    );
+    allBlueprintsBtn.x = 0;
+    allBlueprintsBtn.y = y;
+    c.addChild(allBlueprintsBtn);
+    y += BUTTON_HEIGHT + SECTION_GAP;
+
+    // ── EQUIPMENT section ────────────────────────────────────────
+    const equipLabel = new Text({ text: 'EQUIPMENT', style: sectionStyle });
+    equipLabel.y = y;
+    c.addChild(equipLabel);
+    y += 18;
+
+    const weaponLabel = new Text({ text: 'Weapon:', style: labelStyle });
+    weaponLabel.x = 0;
+    weaponLabel.y = y + 4;
+    c.addChild(weaponLabel);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+
+    const weapons: { label: string; id: string }[] = [
+      { label: 'Short', id: 'shortsword' },
+      { label: 'Great', id: 'greatsword' },
+      { label: 'Staff', id: 'staff' },
+      { label: 'Xbow', id: 'crossbow' },
+      { label: 'Torch', id: 'torch' },
+    ];
+    const weaponButtons1 = weapons.slice(0, 3).map((w) => createButton(
+      { label: w.label, action: { EquipWeapon: { weapon_id: w.id } } as PlayerAction, width: 48 },
+      (a) => this.fireAction(a),
+    ));
+    y = layoutRow(c, weaponButtons1, 0, y, BUTTON_GAP);
+    y += BUTTON_GAP;
+
+    const weaponButtons2 = weapons.slice(3).map((w) => createButton(
+      { label: w.label, action: { EquipWeapon: { weapon_id: w.id } } as PlayerAction, width: 48 },
+      (a) => this.fireAction(a),
+    ));
+    y = layoutRow(c, weaponButtons2, 0, y, BUTTON_GAP);
+    y += BUTTON_GAP;
+
+    const armourLabel2 = new Text({ text: 'Armour:', style: labelStyle });
+    armourLabel2.x = 0;
+    armourLabel2.y = y + 4;
+    c.addChild(armourLabel2);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+
+    const armours: { label: string; id: string }[] = [
+      { label: 'Cloth', id: 'cloth' },
+      { label: 'Leather', id: 'leather' },
+      { label: 'Chain', id: 'chain' },
+      { label: 'Plate', id: 'plate' },
+    ];
+    const armourButtons = armours.map((a) => createButton(
+      { label: a.label, action: { EquipArmor: { armor_id: a.id } } as PlayerAction, width: 52 },
+      (aa) => this.fireAction(aa),
+    ));
+    y = layoutRow(c, armourButtons, 0, y, BUTTON_GAP);
+    y += SECTION_GAP;
+
     // ── AGENTS section ──────────────────────────────────────────
     const agentsLabel = new Text({ text: 'AGENTS', style: sectionStyle });
     agentsLabel.y = y;
@@ -499,12 +656,23 @@ export class DebugPanel {
     c.addChild(instructions);
     y += 18;
 
-    // ── Draw panel background ─────────────────────────────────────
+    // ── Compute total content height ──────────────────────────────
     this.panelHeight = y + PANEL_PADDING * 2;
+
+    // Draw initial panel background (resize will re-draw with proper capping)
+    const maxVisibleH = this.screenHeight - 40;
+    const visibleH = Math.min(this.panelHeight, maxVisibleH);
     this.panel.clear();
-    this.panel.roundRect(0, 0, PANEL_WIDTH, this.panelHeight, 4);
+    this.panel.roundRect(0, 0, PANEL_WIDTH, visibleH, 4);
     this.panel.fill({ color: 0x1a1510, alpha: 0.95 });
-    this.panel.roundRect(0, 0, PANEL_WIDTH, this.panelHeight, 4);
+    this.panel.roundRect(0, 0, PANEL_WIDTH, visibleH, 4);
     this.panel.stroke({ color: 0x3a3020, alpha: 0.8, width: 1 });
+
+    // Update mask
+    this.maskGfx.clear();
+    this.maskGfx.rect(0, 0, PANEL_WIDTH, visibleH);
+    this.maskGfx.fill({ color: 0xffffff });
+
+    this.maxScroll = Math.max(0, this.panelHeight - visibleH);
   }
 }

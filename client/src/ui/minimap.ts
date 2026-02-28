@@ -43,8 +43,10 @@ const AGENT_STATE_COLORS: Record<AgentStateKind, string> = {
   Defending: '#cc4444',
   Critical: '#ff0000',
   Unresponsive: '#444444',
+  Dormant: '#666688',
 };
 
+const BOUND_AGENT_COLOR = '#00ccff';
 const BUILDING_COLOR = '#d4a017';
 const ROGUE_COLOR = '#cc4444';
 const PLAYER_COLOR = '#ffffff';
@@ -532,9 +534,10 @@ export class Minimap {
       const a = closest.data.Agent;
       const hp = Math.round(a.health_pct * 100);
       const morale = Math.round(a.morale_pct * 100);
+      const boundLabel = a.bound ? ' [Bound]' : '';
       this.showEntityTooltip(globalX, globalY, {
-        name: a.name,
-        sub: `${a.tier} Agent`,
+        name: a.name + boundLabel,
+        sub: `${a.tier} Agent${a.bound ? ' \u2013 Camp Guardian' : ''}`,
         desc: `State: ${a.state}`,
         stat: `HP: ${hp}%  Morale: ${morale}%`,
       });
@@ -666,6 +669,12 @@ export class Minimap {
       const dotSize = this._expanded ? 3 : 2;
 
       if ('Agent' in entity.data) {
+        // Bound agents get a distinct cyan dot, skip normal rendering
+        if (entity.data.Agent.bound) {
+          ctx.fillStyle = BOUND_AGENT_COLOR;
+          ctx.fillRect(Math.floor(mpx) - 2, Math.floor(mpy) - 2, 4, 4);
+          continue;
+        }
         const tier = entity.data.Agent.tier;
         const img = this.agentIconImages.get(tier);
         if (img && this.agentIconsLoaded) {

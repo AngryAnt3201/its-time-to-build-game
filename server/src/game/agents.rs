@@ -46,7 +46,7 @@ fn generate_stats(tier: AgentTierKind) -> AgentStats {
 }
 
 /// Generate the Vibe configuration for a given agent tier.
-fn generate_vibe_config(tier: AgentTierKind) -> AgentVibeConfig {
+pub fn generate_vibe_config(tier: AgentTierKind) -> AgentVibeConfig {
     match tier {
         AgentTierKind::Apprentice => AgentVibeConfig {
             model_id: "ministral-3b-2025-01".to_string(),
@@ -221,6 +221,7 @@ mod tests {
     fn make_economy(balance: i64) -> TokenEconomy {
         TokenEconomy {
             balance,
+            fractional: 0.0,
             income_per_tick: 0.0,
             expenditure_per_tick: 0.0,
             income_sources: Vec::new(),

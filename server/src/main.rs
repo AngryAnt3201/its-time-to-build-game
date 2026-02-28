@@ -1,7 +1,7 @@
 use its_time_to_build_server::ecs::components::*;
 use its_time_to_build_server::ecs::weapon_stats;
 use its_time_to_build_server::ecs::world::create_world;
-use its_time_to_build_server::ecs::systems::{agent_tick, agent_wander, building, combat, crank, economy, placement, projectile, spawn};
+use its_time_to_build_server::ecs::systems::{agent_tick, agent_wander, building, camp_spawner, combat, crank, economy, placement, projectile, spawn};
 use its_time_to_build_server::game::{agents, collision};
 use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
@@ -109,6 +109,7 @@ async fn main() {
         // Debug actions may generate log entries and remove entities
         let mut debug_log_entries: Vec<String> = Vec::new();
         let mut debug_entities_removed: Vec<EntityId> = Vec::new();
+        let mut chest_rewards: Vec<ChestReward> = Vec::new();
 
         // ── 1. Process player input (movement + actions) ─────────────
         while let Ok(input) = server.input_rx.try_recv() {
@@ -192,11 +193,39 @@ async fn main() {
                                 if game_state.economy.balance >= cost {
                                     game_state.economy.balance -= cost;
                                     let _ = world.remove_one::<Recruitable>(target);
-                                    if let Ok(mut state) = world.get::<&mut AgentState>(target) {
-                                        state.state = AgentStateKind::Idle;
-                                    }
-                                    if let Ok(name) = world.get::<&AgentName>(target) {
-                                        debug_log_entries.push(format!("{} recruited!", name.name));
+
+                                    // Check if this is a bound agent
+                                    let was_bound = world.get::<&BoundAgent>(target).is_ok();
+                                    if was_bound {
+                                        let _ = world.remove_one::<BoundAgent>(target);
+                                        // Set walk target to base
+                                        if let Ok(mut wander) = world.get::<&mut WanderState>(target) {
+                                            wander.walk_target = Some((400.0, 300.0));
+                                        }
+                                        if let Ok(mut state) = world.get::<&mut AgentState>(target) {
+                                            state.state = AgentStateKind::Walking;
+                                        }
+                                        // Release guardians: remove GuardianRogue component from
+                                        // all rogues guarding this agent so they become normal rogues
+                                        let guardian_entities: Vec<hecs::Entity> = world
+                                            .query::<&GuardianRogue>()
+                                            .iter()
+                                            .filter(|(_e, g)| g.bound_agent_entity == target)
+                                            .map(|(e, _g)| e)
+                                            .collect();
+                                        for ge in guardian_entities {
+                                            let _ = world.remove_one::<GuardianRogue>(ge);
+                                        }
+                                        if let Ok(name) = world.get::<&AgentName>(target) {
+                                            debug_log_entries.push(format!("{} freed! returning to base.", name.name));
+                                        }
+                                    } else {
+                                        if let Ok(mut state) = world.get::<&mut AgentState>(target) {
+                                            state.state = AgentStateKind::Idle;
+                                        }
+                                        if let Ok(name) = world.get::<&AgentName>(target) {
+                                            debug_log_entries.push(format!("{} recruited!", name.name));
+                                        }
                                     }
                                 }
                             }
@@ -511,53 +540,64 @@ async fn main() {
                     PlayerAction::CraftItem { recipe_id } => {
                         debug_log_entries.push(format!("Crafted: {}", recipe_id));
                     }
-                    PlayerAction::OpenChest { entity_id } => {
+                    PlayerAction::OpenChest { wx, wy } => {
                         use rand::Rng;
-                        let target = hecs::Entity::from_bits(*entity_id);
-                        if let Some(target) = target {
-                            if world.contains(target) {
-                                let _ = world.despawn(target);
-                                let mut rng = rand::thread_rng();
 
-                                // Always: 5-15 tokens
-                                let token_reward = rng.gen_range(5..=15) as i64;
-                                game_state.economy.balance += token_reward;
+                        // Validate this is a real chest location using the same
+                        // deterministic hash the client uses for placement.
+                        let is_valid_chest = {
+                            const CHEST_SEED: i32 = 55555;
+                            const STEP: i32 = 8;
+                            *wx % STEP == 0 && *wy % STEP == 0
+                                && collision::is_walkable(*wx, *wy)
+                                && (collision::chest_hash(*wx, *wy, CHEST_SEED) % 100) < 10
+                        };
 
-                                // 30% chance: random blueprint
-                                if rng.gen_range(0..100) < 30 {
-                                    let blueprints = [
-                                        "TodoApp", "Calculator", "LandingPage",
-                                        "WeatherDashboard", "ChatApp", "KanbanBoard",
-                                        "EcommerceStore", "AiImageGenerator", "ApiDashboard",
-                                        "Blockchain",
-                                    ];
-                                    let bp = blueprints[rng.gen_range(0..blueprints.len())];
-                                    let bp_type = format!("blueprint:{}", bp);
-                                    if !game_state.has_inventory_item(&bp_type, 1) {
-                                        game_state.add_inventory_item(&bp_type, 1);
-                                        debug_log_entries.push(format!("Found blueprint: {}!", bp));
-                                    }
+                        if is_valid_chest && !game_state.opened_chests.contains(&(*wx, *wy)) {
+                            game_state.opened_chests.insert((*wx, *wy));
+                            let mut rng = rand::thread_rng();
+
+                            // Always: 5-15 tokens
+                            let token_reward = rng.gen_range(5..=15) as i64;
+                            game_state.economy.balance += token_reward;
+                            chest_rewards.push(ChestReward { item_type: "token".to_string(), count: token_reward as u32 });
+
+                            // 30% chance: random blueprint
+                            if rng.gen_range(0..100) < 30 {
+                                let blueprints = [
+                                    "TodoApp", "Calculator", "LandingPage",
+                                    "WeatherDashboard", "ChatApp", "KanbanBoard",
+                                    "EcommerceStore", "AiImageGenerator", "ApiDashboard",
+                                    "Blockchain",
+                                ];
+                                let bp = blueprints[rng.gen_range(0..blueprints.len())];
+                                let bp_type = format!("blueprint:{}", bp);
+                                if !game_state.has_inventory_item(&bp_type, 1) {
+                                    game_state.add_inventory_item(&bp_type, 1);
+                                    chest_rewards.push(ChestReward { item_type: bp_type.clone(), count: 1 });
+                                    debug_log_entries.push(format!("Found blueprint: {}!", bp));
                                 }
-
-                                // 1-3 random materials
-                                let materials = ["material:iron_powder", "material:wood", "material:metal_ring", "material:ore_coin", "material:liquid_gold", "material:mana"];
-                                let weights: [u32; 6] = [30, 30, 25, 15, 12, 8];
-                                let total_weight: u32 = weights.iter().sum();
-                                let mat_count = rng.gen_range(1..=3);
-
-                                for _ in 0..mat_count {
-                                    let mut roll = rng.gen_range(0..total_weight);
-                                    for (i, &w) in weights.iter().enumerate() {
-                                        if roll < w {
-                                            game_state.add_inventory_item(materials[i], 1);
-                                            break;
-                                        }
-                                        roll -= w;
-                                    }
-                                }
-
-                                debug_log_entries.push(format!("Chest opened! +{} tokens", token_reward));
                             }
+
+                            // 1-3 random materials
+                            let materials = ["material:iron_powder", "material:wood", "material:metal_ring", "material:ore_coin", "material:liquid_gold", "material:mana"];
+                            let weights: [u32; 6] = [30, 30, 25, 15, 12, 8];
+                            let total_weight: u32 = weights.iter().sum();
+                            let mat_count = rng.gen_range(1..=3);
+
+                            for _ in 0..mat_count {
+                                let mut roll = rng.gen_range(0..total_weight);
+                                for (i, &w) in weights.iter().enumerate() {
+                                    if roll < w {
+                                        game_state.add_inventory_item(materials[i], 1);
+                                        chest_rewards.push(ChestReward { item_type: materials[i].to_string(), count: 1 });
+                                        break;
+                                    }
+                                    roll -= w;
+                                }
+                            }
+
+                            debug_log_entries.push(format!("Chest opened! +{} tokens", token_reward));
                         }
                     }
                     PlayerAction::PurchaseUpgrade { upgrade_id } => {
@@ -592,9 +632,11 @@ async fn main() {
                     }
                     PlayerAction::AddInventoryItem { item_type, count } => {
                         game_state.add_inventory_item(item_type, *count);
+                        debug_log_entries.push(format!("[inventory] +{} {}", count, item_type));
                     }
                     PlayerAction::RemoveInventoryItem { item_type, count } => {
                         game_state.remove_inventory_item(item_type, *count);
+                        debug_log_entries.push(format!("[inventory] -{} {}", count, item_type));
                     }
 
                     _ => {}
@@ -610,6 +652,14 @@ async fn main() {
             player_x = pos.x;
             player_y = pos.y;
         }
+
+        // ── 1b. Spawn bound-agent camps near player ─────────────────────
+        camp_spawner::camp_spawner_system(
+            &mut world,
+            &mut game_state,
+            player_x,
+            player_y,
+        );
 
         // ── 2. Rogue AI behavior ─────────────────────────────────────
         rogue_ai::rogue_ai_system(&mut world);
@@ -887,6 +937,7 @@ async fn main() {
                     xp: xp_comp.xp,
                     level: xp_comp.level,
                     recruitable_cost: None,
+                    bound: false,
                 },
             });
         }
@@ -898,6 +949,18 @@ async fn main() {
                 if let Some(entity) = entity {
                     if let Ok(rec) = world.get::<&Recruitable>(entity) {
                         *recruitable_cost = Some(rec.cost);
+                    }
+                }
+            }
+        }
+
+        // Fill in bound flag for agents that have the BoundAgent component
+        for delta in &mut entities_changed {
+            if let EntityData::Agent { bound, .. } = &mut delta.data {
+                let entity = hecs::Entity::from_bits(delta.id);
+                if let Some(entity) = entity {
+                    if world.get::<&BoundAgent>(entity).is_ok() {
+                        *bound = true;
                     }
                 }
             }
@@ -1052,6 +1115,8 @@ async fn main() {
                 }).collect(),
                 agent_assignments: project_manager.agent_assignments.clone(),
             }),
+            opened_chests: game_state.opened_chests.iter().copied().collect(),
+            chest_rewards,
         };
 
         // ── Send to client ───────────────────────────────────────────

@@ -255,9 +255,18 @@ export class EntityRenderer {
 
   private drawAgent(
     sprite: EntitySprite,
-    agent: { name: string; state: AgentStateKind; tier: AgentTierKind; morale_pct: number },
+    agent: { name: string; state: AgentStateKind; tier: AgentTierKind; morale_pct: number; bound?: boolean },
   ): void {
     const color = AGENT_STATE_COLORS[agent.state];
+    const g = sprite.graphic;
+
+    // Bound agent visual: pulsing cyan glow (drawn first so it appears behind the icon)
+    if (agent.bound) {
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+      const glowAlpha = 0.3 + 0.4 * pulse;
+      g.circle(0, 0, 14);
+      g.fill({ color: 0x00ccff, alpha: glowAlpha });
+    }
 
     // Agent tier icon sprite
     if (this.agentIconsLoaded) {
@@ -283,8 +292,11 @@ export class EntityRenderer {
     sprite.graphic.circle(0, 0, 10);
     sprite.graphic.stroke({ color, width: 1.5 });
 
-    // Dim dormant (recruitable) agents
-    if (agent.state === 'Dormant') {
+    // Dim dormant (recruitable) agents; pulse bound agents
+    if (agent.bound) {
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+      sprite.container.alpha = 0.8 + 0.2 * pulse;
+    } else if (agent.state === 'Dormant') {
       sprite.container.alpha = 0.6;
     } else {
       sprite.container.alpha = 1.0;

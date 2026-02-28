@@ -99,6 +99,7 @@ const STATE_COLORS: Record<AgentStateKind, number> = {
   Defending: 0xcc4444,
   Critical: 0xff0000,
   Unresponsive: 0x333333,
+  Dormant: 0x666688,
 };
 
 // ── Tier badge colors ───────────────────────────────────────────────

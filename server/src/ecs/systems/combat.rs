@@ -40,20 +40,20 @@ fn bounty_for(kind: RogueTypeKind) -> i64 {
 fn rogue_damage_to_player(kind: RogueTypeKind) -> i32 {
     match kind {
         RogueTypeKind::Swarm => 1,
-        RogueTypeKind::Corruptor => 2,
+        RogueTypeKind::Corruptor => 1,
         RogueTypeKind::Looper => 1,
-        RogueTypeKind::Assassin => 5,
-        RogueTypeKind::Mimic => 3,
+        RogueTypeKind::Assassin => 2,
+        RogueTypeKind::Mimic => 1,
         RogueTypeKind::TokenDrain => 0,
-        RogueTypeKind::Architect => 3,
+        RogueTypeKind::Architect => 1,
     }
 }
 
 fn rogue_damage_to_agent(kind: RogueTypeKind) -> i32 {
     match kind {
-        RogueTypeKind::Assassin => 8,
-        RogueTypeKind::Corruptor => 3,
-        _ => 2,
+        RogueTypeKind::Assassin => 4,
+        RogueTypeKind::Corruptor => 1,
+        _ => 1,
     }
 }
 
@@ -95,7 +95,7 @@ pub fn combat_system(
     // ── Gather player info ──────────────────────────────────────────
     let mut player_pos: Option<Position> = None;
     let mut player_damage: i32 = 0;
-    let mut player_range: f32 = 30.0;
+    let mut player_range: f32 = 45.0;
     let mut player_arc: f32 = 90.0;
     let mut player_cooldown_remaining: u32 = 0;
     let mut player_cooldown_ticks: u32 = 6;

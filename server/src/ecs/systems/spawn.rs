@@ -53,14 +53,14 @@ pub fn spawn_system(
 
     // ── Base spawn rate by phase ──────────────────────────────────────
     let base_rate = match game_state.phase {
-        GamePhase::Hut => 0.002,
-        GamePhase::Outpost => 0.005,
-        GamePhase::Village => 0.01,
-        GamePhase::Network => 0.02,
-        GamePhase::City => 0.03,
+        GamePhase::Hut => 0.0002,
+        GamePhase::Outpost => 0.0005,
+        GamePhase::Village => 0.001,
+        GamePhase::Network => 0.002,
+        GamePhase::City => 0.003,
     };
 
-    let spawn_chance = base_rate + building_count * 0.002;
+    let spawn_chance = base_rate + building_count * 0.0002;
 
     // ── Roll for spawn ────────────────────────────────────────────────
     if rng.gen::<f32>() > spawn_chance {

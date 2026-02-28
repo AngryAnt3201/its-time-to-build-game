@@ -39,6 +39,7 @@ pub fn crank_system(game_state: &mut GameState, player_cranking: bool, agent_ass
                 crank.heat = crank.max_heat;
             }
 
+            // Base rate: 0.02 tokens/tick → ~0.4 tokens/sec at HandCrank
             let manual_tokens = crank.tokens_per_rotation * efficiency;
             tokens_generated += manual_tokens;
         } else {
@@ -54,8 +55,8 @@ pub fn crank_system(game_state: &mut GameState, player_cranking: bool, agent_ass
 
     // ── Passive generation (always runs) ─────────────────────────────
     let passive_tokens = match crank.tier {
-        CrankTier::WaterWheel => 0.3,
-        CrankTier::RunicEngine => 2.0,
+        CrankTier::WaterWheel => 0.006,
+        CrankTier::RunicEngine => 0.04,
         _ => 0.0,
     };
     tokens_generated += passive_tokens;
@@ -63,19 +64,21 @@ pub fn crank_system(game_state: &mut GameState, player_cranking: bool, agent_ass
     // ── Agent-assigned passive generation ──────────────────────
     if agent_assigned {
         let agent_bonus = match crank.tier {
-            CrankTier::HandCrank => 0.05,
-            CrankTier::GearAssembly => 0.08,
-            CrankTier::WaterWheel => 0.10,
-            CrankTier::RunicEngine => 0.15,
+            CrankTier::HandCrank => 0.001,
+            CrankTier::GearAssembly => 0.0016,
+            CrankTier::WaterWheel => 0.002,
+            CrankTier::RunicEngine => 0.003,
         };
         tokens_generated += agent_bonus;
     }
 
-    // ── Apply to economy balance ─────────────────────────────────────
-    // Balance is stored as i64 so we accumulate fractional tokens by
-    // rounding the generated amount.  For sub-1.0 passive ticks this
-    // means the balance grows slowly, which is intentional.
-    game_state.economy.balance += tokens_generated as i64;
+    // ── Apply to economy balance via fractional accumulator ──────────
+    game_state.economy.fractional += tokens_generated;
+    let whole = game_state.economy.fractional as i64;
+    if whole > 0 {
+        game_state.economy.balance += whole;
+        game_state.economy.fractional -= whole as f64;
+    }
 
     CrankResult {
         tokens_generated,
