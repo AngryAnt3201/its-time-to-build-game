@@ -7,6 +7,7 @@ import { HUD } from './ui/hud';
 import { LogFeed } from './ui/log-feed';
 import { BuildMenu } from './ui/build-menu';
 import type { GameStateUpdate, PlayerInput, PlayerAction } from './network/protocol';
+import { AudioManager } from './audio/manager';
 
 async function init() {
   const screenWidth = window.innerWidth;
@@ -29,6 +30,24 @@ async function init() {
   const hud = new HUD();
   const logFeed = new LogFeed(screenWidth, screenHeight);
   const buildMenu = new BuildMenu();
+
+  // ── Audio system ──────────────────────────────────────────────────
+  const audioManager = new AudioManager();
+
+  // Browser autoplay policy requires a user gesture before AudioContext
+  // can start.  Init on the very first click or keydown, then remove
+  // the listener so it only fires once.
+  const initAudioOnGesture = () => {
+    if (!audioManager.isInitialized) {
+      audioManager.init().catch((err) =>
+        console.warn('[audio] Failed to initialise:', err),
+      );
+    }
+    window.removeEventListener('click', initAudioOnGesture);
+    window.removeEventListener('keydown', initAudioOnGesture);
+  };
+  window.addEventListener('click', initAudioOnGesture);
+  window.addEventListener('keydown', initAudioOnGesture);
 
   // ── Torch light (semi-transparent circle around the player) ─────
   const torchLight = new Graphics();
@@ -267,6 +286,13 @@ async function init() {
       // Add new log entries to log feed (only process new ticks)
       if (state.tick > previousTick && state.log_entries.length > 0) {
         logFeed.addEntries(state.log_entries);
+      }
+
+      // ── Audio: update listener position and play triggered events ──
+      audioManager.setListenerPosition(pos.x, pos.y);
+
+      if (state.tick > previousTick && state.audio_triggers.length > 0) {
+        audioManager.handleAudioEvents(state.audio_triggers);
       }
 
       previousTick = state.tick;
