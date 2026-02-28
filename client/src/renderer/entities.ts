@@ -25,6 +25,7 @@ const AGENT_STATE_COLORS: Record<AgentStateKind, number> = {
   Defending: 0xcc4444,
   Critical: 0xff0000,
   Unresponsive: 0x444444,
+  Dormant: 0x666688,
 };
 
 const ROGUE_TYPE_COLORS: Record<RogueTypeKind, number> = {
@@ -281,6 +282,13 @@ export class EntityRenderer {
     // State-colored ring around icon
     sprite.graphic.circle(0, 0, 10);
     sprite.graphic.stroke({ color, width: 1.5 });
+
+    // Dim dormant (recruitable) agents
+    if (agent.state === 'Dormant') {
+      sprite.container.alpha = 0.6;
+    } else {
+      sprite.container.alpha = 1.0;
+    }
 
     if (agent.morale_pct < 0.3) {
       sprite.graphic.circle(0, 0, 12);

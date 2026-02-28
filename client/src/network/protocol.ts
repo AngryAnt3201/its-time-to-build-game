@@ -56,6 +56,7 @@ export interface AgentData {
   model_lore_name: string;
   xp: number;
   level: number;
+  recruitable_cost: number | null;
 }
 
 export interface BuildingData {
@@ -88,7 +89,8 @@ export type AgentStateKind =
   | "Exploring"
   | "Defending"
   | "Critical"
-  | "Unresponsive";
+  | "Unresponsive"
+  | "Dormant";
 
 export type AgentTierKind =
   | "Apprentice"
@@ -115,7 +117,10 @@ export type BuildingTypeKind =
   | "AiImageGenerator"
   | "ApiDashboard"
   // Tier 4
-  | "Blockchain";
+  | "Blockchain"
+  // Home Base
+  | "TokenWheel"
+  | "CraftingTable";
 
 // ── Rogue types ────────────────────────────────────────────────────
 
@@ -203,6 +208,19 @@ export interface CombatEvent {
   rogue_type: RogueTypeKind | null;
 }
 
+// ── Wheel snapshot ──────────────────────────────────────────────
+
+export interface WheelSnapshot {
+  tier: string;
+  tokens_per_rotation: number;
+  agent_bonus_per_tick: number;
+  heat: number;
+  max_heat: number;
+  is_cranking: boolean;
+  assigned_agent_id: number | null;
+  upgrade_cost: number | null;
+}
+
 // ── Main game state update (Server -> Client) ─────────────────────
 
 export interface GameStateUpdate {
@@ -215,6 +233,7 @@ export interface GameStateUpdate {
   log_entries: LogEntry[];
   audio_triggers: AudioEvent[];
   debug: DebugSnapshot;
+  wheel: WheelSnapshot;
   project_manager: ProjectManagerState | null;
   combat_events: CombatEvent[];
   player_hit: boolean;
@@ -241,6 +260,11 @@ export type PlayerAction =
   | "CrankStart"
   | "CrankStop"
   | "RollbackAgent"
+  // Home base actions
+  | { RecruitAgent: { entity_id: number } }
+  | "UpgradeWheel"
+  | { AssignAgentToWheel: { agent_id: number } }
+  | "UnassignAgentFromWheel"
   | { EquipWeapon: { weapon_id: string } }
   | { EquipArmor: { armor_id: string } }
   // Debug actions

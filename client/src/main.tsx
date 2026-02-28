@@ -16,6 +16,8 @@ import { UpgradeTree } from './ui/upgrade-tree';
 import { Grimoire } from './ui/grimoire';
 import { DebugPanel } from './ui/debug-panel';
 import { BuildingPanel } from './ui/building-panel';
+import { WheelPanel } from './ui/wheel-panel';
+import { CraftingModal } from './ui/crafting-modal';
 import { Minimap } from './ui/minimap';
 import { HotbarTooltip } from './ui/hotbar-tooltip';
 import { BuildingToolbar } from './ui/building-toolbar';
@@ -143,6 +145,22 @@ async function startGame() {
     onClose: () => {
       // Nothing needed — panel manages its own visibility
     },
+  });
+
+  const wheelPanel = new WheelPanel({
+    onAction: (action) => {
+      const input: PlayerInput = { tick: clientTick, movement: { x: 0, y: 0 }, action, target: null };
+      connection.sendInput(input);
+    },
+    onClose: () => {},
+  });
+
+  const craftingModal = new CraftingModal({
+    onAction: (action) => {
+      const input: PlayerInput = { tick: clientTick, movement: { x: 0, y: 0 }, action, target: null };
+      connection.sendInput(input);
+    },
+    onClose: () => {},
   });
 
   // ── Building hover toolbar ──────────────────────────────────────────
@@ -714,6 +732,22 @@ async function startGame() {
         }
         agentWorldTooltip.hide();
         terminalOverlay.openPinned(clickedAgentId, agentBuildingId, clickedAgentData.name, agentBuildingName);
+      } else if (clickedAgentId !== null && clickedAgentData !== null && clickedAgentData.state === 'Dormant') {
+        const entity = entityMap.get(clickedAgentId);
+        const agentFullData = entity ? (entity.data as { Agent?: { recruitable_cost: number | null } }).Agent : null;
+        if (agentFullData?.recruitable_cost != null) {
+          const cost = agentFullData.recruitable_cost;
+          const balance = latestState?.player?.tokens ?? 0;
+          if (balance >= cost) {
+            const input: PlayerInput = {
+              tick: clientTick,
+              movement: { x: 0, y: 0 },
+              action: { RecruitAgent: { entity_id: clickedAgentId } },
+              target: null,
+            };
+            connection.sendInput(input);
+          }
+        }
       }
     }
   });
@@ -767,6 +801,16 @@ async function startGame() {
     // ── Terminal overlay key handling ─────────────────────────────
     if (terminalOverlay.visible && key === 'escape') {
       terminalOverlay.close();
+      return;
+    }
+
+    // ── Wheel panel / crafting modal key handling ───────────────
+    if (wheelPanel.visible && key === 'escape') {
+      wheelPanel.close();
+      return;
+    }
+    if (craftingModal.visible && key === 'escape') {
+      craftingModal.close();
       return;
     }
 
@@ -961,7 +1005,13 @@ async function startGame() {
             nearestType = data.building_type;
           }
         }
-        if (nearestType) {
+        if (nearestType === 'TokenWheel') {
+          wheelPanel.open();
+          interactedWithBuilding = true;
+        } else if (nearestType === 'CraftingTable') {
+          craftingModal.open();
+          interactedWithBuilding = true;
+        } else if (nearestType) {
           const buildingId = buildingTypeToId(nearestType);
           const name = buildingTypeToName(nearestType);
           const status = latestState?.project_manager?.building_statuses?.[buildingId] ?? 'NotInitialized';
@@ -1236,6 +1286,18 @@ async function startGame() {
           buildingToolbar.hide();
           toolbarBuildingEntityId = null;
         }
+      }
+
+      // ── Update wheel panel with live state ────────────────────────
+      if (wheelPanel.visible && latestState?.wheel) {
+        const agentNames = new Map<number, string>();
+        for (const entity of entityMap.values()) {
+          if (entity.kind === 'Agent') {
+            const data = (entity.data as { Agent?: { name: string } }).Agent;
+            if (data) agentNames.set(entity.id, data.name);
+          }
+        }
+        wheelPanel.update(latestState.wheel, agentNames);
       }
 
       // Death screen
