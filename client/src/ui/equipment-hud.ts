@@ -383,6 +383,10 @@ export class EquipmentHUD {
     this.armourIcon = null;
   }
 
+  getEquippedWeapon(): WeaponDef | null {
+    return this.equippedWeapon;
+  }
+
   // ── Private rendering ────────────────────────────────────────────
 
   private drawPanel(): void {

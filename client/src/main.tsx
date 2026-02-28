@@ -22,6 +22,7 @@ import { BuildingToolbar } from './ui/building-toolbar';
 import { DeathScreen } from './ui/death-screen';
 import { TerminalOverlay } from './ui/terminal-overlay';
 import { AgentWorldTooltip, type AgentWorldData } from './ui/agent-world-tooltip';
+import { CombatVFX } from './renderer/combat-vfx';
 import { ALL_BUILDINGS, TIER_NAMES, buildingTypeToId as buildingIdFromType } from './data/buildings';
 import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta, BuildingTypeKind } from './network/protocol';
 import { AudioManager } from './audio/manager';
@@ -233,6 +234,9 @@ async function startGame() {
   player.x = 400;
   player.y = 300;
 
+  // ── Combat VFX renderer ────────────────────────────────────────
+  const combatVFX = new CombatVFX();
+
   // ── World container (moves with camera, scaled for pixel art) ───
   const ZOOM = 3; // 3× zoom so 16 px pixel-art tiles are clearly visible
   const worldContainer = new Container();
@@ -242,6 +246,7 @@ async function startGame() {
   worldContainer.addChild(lightingRenderer.container); // darkness overlay
   worldContainer.addChild(entityRenderer.container);   // entities
   worldContainer.addChild(player);                     // player on top
+  worldContainer.addChild(combatVFX.worldLayer);       // combat VFX on top
   worldContainer.addChild(torchLight);                 // torch glow
   worldContainer.addChild(buildMenu.ghostGraphic);     // placement ghost
 
@@ -263,6 +268,7 @@ async function startGame() {
   uiContainer.addChild(equipmentHud.tooltipContainer); // tooltip on top of all UI
   uiContainer.addChild(agentsHud.tooltipContainer);    // agent tooltip on top of all UI
 
+  uiContainer.addChild(combatVFX.screenLayer);          // vignette overlay
   const deathScreen = new DeathScreen();
   uiContainer.addChild(deathScreen.container);
 
@@ -734,6 +740,8 @@ async function startGame() {
   // ── Keyboard input tracking ─────────────────────────────────────
   const keys: Set<string> = new Set();
   let crankActive = false;
+  let playerHitFlash = 0;
+  let lastAttackAction = false;
 
   // Track keys that should fire once on press (not held)
   const justPressed: Set<string> = new Set();
@@ -973,6 +981,25 @@ async function startGame() {
     // Clear just-pressed keys
     justPressed.clear();
 
+    // ── Weapon combat stats (arc, range, color) for VFX ────────
+    const WEAPON_COMBAT_STATS: Record<string, { arc: number; range: number; color: number }> = {
+      shortsword: { arc: 90, range: 30, color: 0xeeeeee },
+      greatsword: { arc: 180, range: 35, color: 0xff6622 },
+      staff: { arc: 120, range: 40, color: 0x6644ff },
+      crossbow: { arc: 0, range: 120, color: 0x44ccff },
+      torch: { arc: 360, range: 25, color: 0xff8800 },
+    };
+
+    const ROGUE_COLORS: Record<string, number> = {
+      Corruptor: 0xcc44cc,
+      Looper: 0x44cccc,
+      TokenDrain: 0x88cc44,
+      Assassin: 0xff2222,
+      Swarm: 0x886644,
+      Mimic: 0xd4a017,
+      Architect: 0x8844cc,
+    };
+
     // ── Collision: block movement into water/cliffs ──────────────
     // Check each axis independently for wall-sliding behavior.
     const PLAYER_SPEED = 3.0; // must match server PLAYER_SPEED
@@ -1035,11 +1062,66 @@ async function startGame() {
       player.x = pos.x;
       player.y = pos.y;
 
-      // ── Camera: center world container on player (accounting for zoom)
+      // ── Process combat events for VFX ────────────────────────────
+      if (state.combat_events && state.combat_events.length > 0) {
+        for (const evt of state.combat_events) {
+          combatVFX.spawnDamageNumber(evt.x, evt.y, evt.damage, false);
+          if (evt.is_kill && evt.rogue_type) {
+            const color = ROGUE_COLORS[evt.rogue_type] ?? 0xffffff;
+            combatVFX.spawnDeathParticles(evt.x, evt.y, color);
+            combatVFX.triggerShake(3, 5);
+          }
+        }
+      }
+
+      // ── Player took damage VFX ─────────────────────────────────
+      if (state.player_hit && state.player_hit_damage > 0) {
+        combatVFX.spawnDamageNumber(pos.x, pos.y - 4, state.player_hit_damage, true);
+        playerHitFlash = 6;
+        if (state.player_hit_damage >= 3) {
+          combatVFX.triggerShake(5, 8);
+        }
+      }
+
+      // ── Player hit flash ─────────────────────────────────────────
+      if (playerHitFlash > 0) {
+        player.tint = 0xff4444;
+        playerHitFlash--;
+      } else {
+        player.tint = 0xffffff;
+      }
+
+      // ── Player attack swing arc ─────────────────────────────────
+      if (action === 'Attack' && !state.player.dead) {
+        const facing = state.player.facing;
+        const equipped = equipmentHud.getEquippedWeapon();
+        const weaponId = equipped?.id ?? 'shortsword';
+        const stats = WEAPON_COMBAT_STATS[weaponId];
+        if (stats && stats.arc > 0) {
+          combatVFX.spawnSwingArc(
+            pos.x, pos.y,
+            facing.x, facing.y,
+            stats.arc, stats.range,
+            stats.color,
+          );
+        }
+      }
+
+      // ── Low HP vignette ──────────────────────────────────────────
+      const hpPct = state.player.max_health > 0
+        ? state.player.health / state.player.max_health
+        : 1;
+      combatVFX.updateVignette(hpPct, window.innerWidth, window.innerHeight);
+
+      // ── Tick all VFX ─────────────────────────────────────────────
+      combatVFX.update();
+
+      // ── Camera: center world container on player (with shake) ────
       const halfW = window.innerWidth / 2;
       const halfH = window.innerHeight / 2;
-      worldContainer.x = halfW - pos.x * ZOOM;
-      worldContainer.y = halfH - pos.y * ZOOM;
+      const shake = combatVFX.getShakeOffset();
+      worldContainer.x = halfW - pos.x * ZOOM + shake.x;
+      worldContainer.y = halfH - pos.y * ZOOM + shake.y;
 
       // Update torch light position and radius
       torchLight.x = pos.x;

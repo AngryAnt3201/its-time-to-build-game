@@ -864,16 +864,20 @@ async fn main() {
             facing: Vec2::default(),
             dead: false,
             death_timer: 0.0,
+            attack_cooldown_pct: 0.0,
         };
 
-        for (_id, (pos, health, torch, facing)) in world
-            .query_mut::<hecs::With<(&Position, &Health, &TorchRange, &Facing), &Player>>()
+        for (_id, (pos, health, torch, facing, combat)) in world
+            .query_mut::<hecs::With<(&Position, &Health, &TorchRange, &Facing, &CombatPower), &Player>>()
         {
             player_snapshot.position = Vec2 { x: pos.x, y: pos.y };
             player_snapshot.health = health.current as f32;
             player_snapshot.max_health = health.max as f32;
             player_snapshot.torch_range = torch.radius;
             player_snapshot.facing = Vec2 { x: facing.dx, y: facing.dy };
+            if combat.cooldown_ticks > 0 {
+                player_snapshot.attack_cooldown_pct = combat.cooldown_remaining as f32 / combat.cooldown_ticks as f32;
+            }
         }
 
         player_snapshot.dead = game_state.player_dead;

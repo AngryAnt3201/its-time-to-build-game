@@ -21,6 +21,7 @@ export interface PlayerSnapshot {
   facing: Vec2;
   dead: boolean;
   death_timer: number;
+  attack_cooldown_pct: number;
 }
 
 // ── Entities ───────────────────────────────────────────────────────

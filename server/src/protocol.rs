@@ -26,6 +26,7 @@ pub struct PlayerSnapshot {
     pub facing: Vec2,
     pub dead: bool,
     pub death_timer: f32,
+    pub attack_cooldown_pct: f32,
 }
 
 // ── Entities ───────────────────────────────────────────────────────
