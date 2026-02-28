@@ -1,7 +1,7 @@
 use its_time_to_build_server::ecs::components::*;
 use its_time_to_build_server::ecs::weapon_stats;
 use its_time_to_build_server::ecs::world::create_world;
-use its_time_to_build_server::ecs::systems::{agent_tick, agent_wander, building, combat, crank, economy, placement, spawn};
+use its_time_to_build_server::ecs::systems::{agent_tick, agent_wander, building, combat, crank, economy, placement, projectile, spawn};
 use its_time_to_build_server::game::{agents, collision};
 use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
@@ -525,7 +525,30 @@ async fn main() {
         // ── 4. Combat system ─────────────────────────────────────────
         let combat_result = combat::combat_system(&mut world, &mut game_state, player_attacking);
 
-        // TODO(Task 5): Spawn projectile if player used crossbow
+        // Spawn projectile if player used crossbow
+        if combat_result.player_attacked {
+            let proj_data: Option<(f32, f32, f32, f32, i32, f32)> = {
+                let mut data = None;
+                for (_id, (pos, combat, facing)) in
+                    world.query::<(&Position, &CombatPower, &Facing)>().with::<&Player>().iter()
+                {
+                    if combat.is_projectile {
+                        data = Some((pos.x, pos.y, facing.dx, facing.dy, combat.base_damage, combat.range));
+                    }
+                    break;
+                }
+                data
+            };
+            if let Some((px, py, dx, dy, damage, range)) = proj_data {
+                world.spawn((
+                    Position { x: px, y: py },
+                    Projectile { dx, dy, speed: 6.0, damage, range_remaining: range, owner_is_player: true },
+                ));
+            }
+        }
+
+        // ── 4b. Projectile system ──────────────────────────────────
+        let projectile_result = projectile::projectile_system(&mut world);
 
         // Collect entity IDs of killed rogues before they were despawned
         let mut entities_removed: Vec<EntityId> = combat_result
@@ -533,6 +556,13 @@ async fn main() {
             .iter()
             .map(|(entity, _kind)| entity.to_bits().into())
             .collect();
+
+        // Merge projectile results
+        for &(_rogue_entity, _kind) in &projectile_result.killed_rogues {
+            entities_removed.push(_rogue_entity.to_bits().into());
+        }
+        entities_removed.extend(projectile_result.despawned.iter().map(|e| -> EntityId { e.to_bits().into() }));
+        game_state.economy.balance += projectile_result.bounty_tokens;
 
         // Include debug-removed entities
         entities_removed.extend(debug_entities_removed);
@@ -783,6 +813,16 @@ async fn main() {
             });
         }
 
+        // Projectiles
+        for (id, (pos, proj)) in world.query_mut::<(&Position, &Projectile)>() {
+            entities_changed.push(EntityDelta {
+                id: id.to_bits().into(),
+                kind: EntityKind::Projectile,
+                position: Vec2 { x: pos.x, y: pos.y },
+                data: EntityData::Projectile { dx: proj.dx, dy: proj.dy },
+            });
+        }
+
         // ── Query player entity for snapshot ─────────────────────────
         let mut player_snapshot = PlayerSnapshot {
             position: Vec2::default(),
@@ -804,7 +844,11 @@ async fn main() {
         }
 
         // ── Collect audio triggers ───────────────────────────────────
-        let audio_triggers = combat_result.audio_events;
+        let audio_triggers = {
+            let mut triggers = combat_result.audio_events;
+            triggers.extend(projectile_result.audio_events);
+            triggers
+        };
 
         // ── 10. Build GameStateUpdate and send ───────────────────────
         let update = GameStateUpdate {
@@ -846,7 +890,11 @@ async fn main() {
                     CrankTier::RunicEngine => None,
                 },
             },
-            combat_events: combat_result.combat_events.clone(),
+            combat_events: {
+                let mut events = combat_result.combat_events.clone();
+                events.extend(projectile_result.combat_events);
+                events
+            },
             player_hit: combat_result.player_damaged,
             player_hit_damage: combat_result.player_hit_damage,
             project_manager: Some(ProjectManagerState {

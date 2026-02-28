@@ -18,6 +18,16 @@ pub struct Rogue;
 #[derive(Debug, Clone)]
 pub struct DroppedItem;
 
+#[derive(Debug, Clone)]
+pub struct Projectile {
+    pub dx: f32,
+    pub dy: f32,
+    pub speed: f32,
+    pub damage: i32,
+    pub range_remaining: f32,
+    pub owner_is_player: bool,
+}
+
 // ── Spatial ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]

@@ -34,6 +34,7 @@ pub enum EntityKind {
     Building,
     Rogue,
     Item,
+    Projectile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +72,10 @@ pub enum EntityData {
     },
     Item {
         item_type: String,
+    },
+    Projectile {
+        dx: f32,
+        dy: f32,
     },
 }
 

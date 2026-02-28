@@ -1,5 +1,5 @@
 import { Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
-import type { EntityDelta, AgentStateKind, AgentTierKind, RogueTypeKind } from '../network/protocol';
+import type { EntityDelta, AgentStateKind, AgentTierKind, RogueTypeKind, ProjectileData } from '../network/protocol';
 
 // ── Internal sprite type ────────────────────────────────────────────
 
@@ -219,6 +219,8 @@ export class EntityRenderer {
         this.drawRogue(sprite, delta.data.Rogue);
       } else if ('Item' in delta.data) {
         this.drawItem(sprite, delta.data.Item);
+      } else if ('Projectile' in delta.data) {
+        this.drawProjectile(sprite, delta.data.Projectile);
       }
     }
   }
@@ -395,6 +397,21 @@ export class EntityRenderer {
     sprite.label.text = item.item_type;
     sprite.label.style = makeLabelStyle(ITEM_COLOR);
 
+    this.cleanRogueElements(sprite);
+  }
+
+  private drawProjectile(
+    sprite: EntitySprite,
+    proj: ProjectileData,
+  ): void {
+    const len = 4;
+    sprite.graphic.moveTo(-proj.dx * len, -proj.dy * len);
+    sprite.graphic.lineTo(proj.dx * len, proj.dy * len);
+    sprite.graphic.stroke({ color: 0x44ccff, alpha: 0.9, width: 2 });
+    // Bright tip
+    sprite.graphic.circle(proj.dx * len * 0.5, proj.dy * len * 0.5, 1.5);
+    sprite.graphic.fill({ color: 0xaaeeff, alpha: 1.0 });
+    sprite.label.text = '';
     this.cleanRogueElements(sprite);
   }
 

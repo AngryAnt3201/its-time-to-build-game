@@ -24,7 +24,7 @@ export interface PlayerSnapshot {
 // ── Entities ───────────────────────────────────────────────────────
 
 // Unit-variant enum serializes as plain strings
-export type EntityKind = "Agent" | "Building" | "Rogue" | "Item";
+export type EntityKind = "Agent" | "Building" | "Rogue" | "Item" | "Projectile";
 
 export interface EntityDelta {
   id: EntityId;
@@ -38,7 +38,8 @@ export type EntityData =
   | { Agent: AgentData }
   | { Building: BuildingData }
   | { Rogue: RogueData }
-  | { Item: ItemData };
+  | { Item: ItemData }
+  | { Projectile: ProjectileData };
 
 export interface AgentData {
   name: string;
@@ -67,6 +68,11 @@ export interface RogueData {
 
 export interface ItemData {
   item_type: string;
+}
+
+export interface ProjectileData {
+  dx: number;
+  dy: number;
 }
 
 // ── Agent enums ────────────────────────────────────────────────────
