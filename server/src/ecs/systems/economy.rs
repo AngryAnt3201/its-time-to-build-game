@@ -18,8 +18,10 @@ pub fn economy_system(world: &World, game_state: &mut GameState) {
     for (_entity, (_agent, agent_state, agent_tier)) in
         world.query::<(&Agent, &AgentState, &AgentTier)>().iter()
     {
-        // Dead agents cost nothing.
-        if agent_state.state == AgentStateKind::Unresponsive {
+        // Dead and dormant agents cost nothing.
+        if agent_state.state == AgentStateKind::Unresponsive
+            || agent_state.state == AgentStateKind::Dormant
+        {
             continue;
         }
 

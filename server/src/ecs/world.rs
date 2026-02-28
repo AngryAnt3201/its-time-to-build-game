@@ -6,7 +6,7 @@ use crate::game::upgrades::UpgradeState;
 
 use super::components::{
     Agent, AgentMorale, AgentName, AgentPersonality, AgentState, AgentStats, AgentTier, AgentXP,
-    AgentVibeConfig, Assignment, Building, BuildingEffects, BuildingType, CombatPower, CarryCapacity,
+    AgentVibeConfig, Assignment, Building, BuildingEffects, BuildingType, CarryCapacity,
     ConstructionProgress, CrankState, CrankTier, GamePhase, GameState, Health, LightSource,
     Player, Position, Recruitable, TokenEconomy, TorchRange, Velocity, VoiceProfile, WanderState,
     WeaponType, ArmorType, Facing,
