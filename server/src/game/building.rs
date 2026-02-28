@@ -172,5 +172,31 @@ pub fn get_building_definition(kind: &BuildingTypeKind) -> BuildingDefinition {
             effects: vec![BuildingEffect::PassiveIncome(1.0)],
             description: "Immutable. Decentralized. Unnecessary.",
         },
+
+        // ── Home Base ──────────────────────────────────────────────
+        BuildingTypeKind::TokenWheel => BuildingDefinition {
+            kind: *kind,
+            name: "Token Wheel",
+            tier: 0,
+            token_cost: 0,
+            build_time: 1.0,
+            width: 2,
+            height: 2,
+            light_source: Some((60.0, (0.9, 0.75, 0.3))),
+            effects: vec![],
+            description: "Spin to earn. Upgrade to earn faster.",
+        },
+        BuildingTypeKind::CraftingTable => BuildingDefinition {
+            kind: *kind,
+            name: "Crafting Table",
+            tier: 0,
+            token_cost: 0,
+            build_time: 1.0,
+            width: 2,
+            height: 2,
+            light_source: Some((40.0, (0.7, 0.6, 0.3))),
+            effects: vec![],
+            description: "Craft items and research upgrades.",
+        },
     }
 }

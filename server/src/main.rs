@@ -178,6 +178,55 @@ async fn main() {
                         player_cranking = false;
                     }
 
+                    // ── Home base actions ──────────────────────────────
+                    PlayerAction::RecruitAgent { entity_id } => {
+                        let target = hecs::Entity::from_bits(*entity_id);
+                        if let Some(target) = target {
+                            let cost = world.get::<&Recruitable>(target).ok().map(|r| r.cost);
+                            if let Some(cost) = cost {
+                                if game_state.economy.balance >= cost {
+                                    game_state.economy.balance -= cost;
+                                    let _ = world.remove_one::<Recruitable>(target);
+                                    if let Ok(mut state) = world.get::<&mut AgentState>(target) {
+                                        state.state = AgentStateKind::Idle;
+                                    }
+                                    if let Ok(name) = world.get::<&AgentName>(target) {
+                                        debug_log_entries.push(format!("{} recruited!", name.name));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    PlayerAction::UpgradeWheel => {
+                        let (next_tier, cost) = match game_state.crank.tier {
+                            CrankTier::HandCrank => (Some(CrankTier::GearAssembly), 25),
+                            CrankTier::GearAssembly => (Some(CrankTier::WaterWheel), 75),
+                            CrankTier::WaterWheel => (Some(CrankTier::RunicEngine), 200),
+                            CrankTier::RunicEngine => (None, 0),
+                        };
+                        if let Some(tier) = next_tier {
+                            if game_state.economy.balance >= cost {
+                                game_state.economy.balance -= cost;
+                                game_state.crank.tier = tier;
+                                let tier_name = crank_tier_to_string(&game_state.crank.tier);
+                                debug_log_entries.push(format!("Wheel upgraded to {}", tier_name));
+                            }
+                        }
+                    }
+                    PlayerAction::AssignAgentToWheel { agent_id } => {
+                        let entity = hecs::Entity::from_bits(*agent_id);
+                        if let Some(entity) = entity {
+                            if let Ok(state) = world.get::<&AgentState>(entity) {
+                                if state.state != AgentStateKind::Dormant {
+                                    game_state.crank.assigned_agent = Some(entity);
+                                }
+                            }
+                        }
+                    }
+                    PlayerAction::UnassignAgentFromWheel => {
+                        game_state.crank.assigned_agent = None;
+                    }
+
                     // ── Debug actions ──────────────────────────────────
                     PlayerAction::DebugSetTokens { amount } => {
                         game_state.economy.balance = *amount;
@@ -494,7 +543,10 @@ async fn main() {
         economy::economy_system(&world, &mut game_state);
 
         // ── 7. Crank system ──────────────────────────────────────────
-        let crank_result = crank::crank_system(&mut game_state, player_cranking);
+        let agent_assigned = game_state.crank.assigned_agent
+            .map(|e| world.contains(e))
+            .unwrap_or(false);
+        let crank_result = crank::crank_system(&mut game_state, player_cranking, agent_assigned);
 
         // ── 7b. Agent turn tick ─────────────────────────────────────
         let agent_tick_result = agent_tick::agent_tick_system(&mut world, &mut game_state.economy);
@@ -681,8 +733,21 @@ async fn main() {
                     model_lore_name: vibe.model_lore_name.clone(),
                     xp: xp_comp.xp,
                     level: xp_comp.level,
+                    recruitable_cost: None,
                 },
             });
+        }
+
+        // Fill in recruitable_cost for agents that have the Recruitable component
+        for delta in &mut entities_changed {
+            if let EntityData::Agent { recruitable_cost, .. } = &mut delta.data {
+                let entity = hecs::Entity::from_bits(delta.id);
+                if let Some(entity) = entity {
+                    if let Ok(rec) = world.get::<&Recruitable>(entity) {
+                        *recruitable_cost = Some(rec.cost);
+                    }
+                }
+            }
         }
 
         // Buildings
@@ -758,6 +823,26 @@ async fn main() {
                 god_mode: game_state.god_mode,
                 phase: phase_to_string(&game_state.phase),
                 crank_tier: crank_tier_to_string(&game_state.crank.tier),
+            },
+            wheel: WheelSnapshot {
+                tier: crank_tier_to_string(&game_state.crank.tier),
+                tokens_per_rotation: game_state.crank.tokens_per_rotation,
+                agent_bonus_per_tick: match game_state.crank.tier {
+                    CrankTier::HandCrank => 0.05,
+                    CrankTier::GearAssembly => 0.08,
+                    CrankTier::WaterWheel => 0.10,
+                    CrankTier::RunicEngine => 0.15,
+                },
+                heat: game_state.crank.heat,
+                max_heat: game_state.crank.max_heat,
+                is_cranking: game_state.crank.is_cranking,
+                assigned_agent_id: game_state.crank.assigned_agent.map(|e| e.to_bits().into()),
+                upgrade_cost: match game_state.crank.tier {
+                    CrankTier::HandCrank => Some(25),
+                    CrankTier::GearAssembly => Some(75),
+                    CrankTier::WaterWheel => Some(200),
+                    CrankTier::RunicEngine => None,
+                },
             },
             project_manager: Some(ProjectManagerState {
                 base_dir: project_manager.base_dir.as_ref().map(|p| p.to_string_lossy().to_string()),

@@ -1,6 +1,14 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import type { BuildingTypeKind } from '../network/protocol';
 
+/** Building types that can have multiple instances (never hidden from hotbar). */
+const STACKABLE_TYPES: Set<BuildingTypeKind> = new Set(['Pylon', 'ComputeFarm']);
+
+/** Calculate escalating cost: base * 1.5^count (rounded up). */
+function escalatingCost(baseCost: number, existingCount: number): number {
+  return Math.ceil(baseCost * Math.pow(1.5, existingCount));
+}
+
 // ── Style constants ──────────────────────────────────────────────────
 
 const FONT = '"IBM Plex Mono", monospace';
@@ -109,6 +117,13 @@ export class BuildHotbar {
   private brackets: Graphics;
   private slotContainers: Container[] = [];
   private slotBgs: Graphics[] = [];
+  private headerText: Text;
+  private plusSlot: Container | null = null;
+  private lastScreenWidth = 0;
+  private lastScreenHeight = 0;
+
+  /** How many of each building type are already placed. */
+  private placedBuildingCounts: Map<BuildingTypeKind, number> = new Map();
 
   constructor() {
     this.container = new Container();
@@ -121,10 +136,10 @@ export class BuildHotbar {
     this.container.addChild(this.brackets);
 
     // Header label (centered)
-    const header = new Text({ text: 'BUILD', style: headerStyle });
-    header.x = PADDING + 2;
-    header.y = 4;
-    this.container.addChild(header);
+    this.headerText = new Text({ text: 'BUILD', style: headerStyle });
+    this.headerText.x = PADDING + 2;
+    this.headerText.y = 4;
+    this.container.addChild(this.headerText);
 
     this.buildSlots();
     this.drawPanel();
@@ -133,6 +148,8 @@ export class BuildHotbar {
   // ── Public API ───────────────────────────────────────────────────
 
   resize(screenWidth: number, screenHeight: number): void {
+    this.lastScreenWidth = screenWidth;
+    this.lastScreenHeight = screenHeight;
     const panelW = this.panelWidth();
     this.container.x = Math.round((screenWidth - panelW) / 2);
     this.container.y = screenHeight - SLOT_H - 28;
@@ -188,10 +205,89 @@ export class BuildHotbar {
     return -1;
   }
 
-  /** Get a hotbar entry by index. */
+  /** Get a hotbar entry by index, with escalating cost applied for stackable buildings. */
   getEntry(index: number): HotbarEntry | null {
     if (index < 0 || index >= this.entries.length) return null;
-    return this.entries[index];
+    const entry = this.entries[index];
+    if (STACKABLE_TYPES.has(entry.type)) {
+      const existingCount = this.placedBuildingCounts.get(entry.type) ?? 0;
+      return { ...entry, cost: escalatingCost(entry.cost, existingCount) };
+    }
+    return entry;
+  }
+
+  /** Update placed building counts; filters out already-built non-stackable buildings. */
+  setPlacedBuildingCounts(counts: Map<BuildingTypeKind, number>): void {
+    this.placedBuildingCounts = counts;
+
+    // Filter: keep stackable buildings + non-stackable that haven't been built yet
+    const filtered = DEFAULT_HOTBAR.filter(entry => {
+      if (STACKABLE_TYPES.has(entry.type)) return true;
+      return (counts.get(entry.type) ?? 0) === 0;
+    });
+
+    // Re-number keys sequentially
+    const renumbered = filtered.map((entry, i) => ({
+      ...entry,
+      key: String(i + 1),
+    }));
+
+    // Check if the visible entries changed
+    const oldTypes = this.entries.map(e => e.type).join(',');
+    const newTypes = renumbered.map(e => e.type).join(',');
+    if (oldTypes !== newTypes) {
+      this.entries = renumbered;
+      this.selectedIndex = -1;
+      this.rebuildAllSlots();
+      return;
+    }
+
+    // Even if the same buildings are shown, refresh escalating costs on slots
+    this.refreshSlotCosts();
+  }
+
+  /** Refresh the displayed cost on each slot (for escalating prices). */
+  private refreshSlotCosts(): void {
+    for (let i = 0; i < this.entries.length; i++) {
+      const entry = this.entries[i];
+      const slot = this.slotContainers[i];
+      if (!slot) continue;
+      const costText = slot.getChildByLabel('slot-cost') as Text | null;
+      if (!costText) continue;
+
+      const displayCost = STACKABLE_TYPES.has(entry.type)
+        ? escalatingCost(entry.cost, this.placedBuildingCounts.get(entry.type) ?? 0)
+        : entry.cost;
+      const newLabel = `${displayCost}◆`;
+      if (costText.text !== newLabel) {
+        costText.text = newLabel;
+        costText.x = Math.round((SLOT_W - costText.width) / 2);
+      }
+    }
+  }
+
+  /** Tear down and rebuild all slot visuals + panel. */
+  private rebuildAllSlots(): void {
+    // Remove old slot containers
+    for (const slot of this.slotContainers) {
+      this.container.removeChild(slot);
+      slot.destroy({ children: true });
+    }
+    if (this.plusSlot) {
+      this.container.removeChild(this.plusSlot);
+      this.plusSlot.destroy({ children: true });
+      this.plusSlot = null;
+    }
+    this.slotContainers = [];
+    this.slotBgs = [];
+
+    this.buildSlots();
+    this.drawPanel();
+
+    // Re-center after width change
+    if (this.lastScreenWidth > 0) {
+      this.resize(this.lastScreenWidth, this.lastScreenHeight);
+    }
   }
 
   // ── Private ──────────────────────────────────────────────────────
@@ -243,8 +339,12 @@ export class BuildHotbar {
       nameText.y = 12;
       slot.addChild(nameText);
 
-      // Cost (bottom)
-      const costText = new Text({ text: `${entry.cost}◆`, style: slotCostStyle });
+      // Cost (bottom) — show escalating cost for stackable buildings
+      const displayCost = STACKABLE_TYPES.has(entry.type)
+        ? escalatingCost(entry.cost, this.placedBuildingCounts.get(entry.type) ?? 0)
+        : entry.cost;
+      const costText = new Text({ text: `${displayCost}◆`, style: slotCostStyle });
+      costText.label = 'slot-cost';
       costText.x = Math.round((SLOT_W - costText.width) / 2);
       costText.y = SLOT_H - 14;
       slot.addChild(costText);
@@ -253,22 +353,22 @@ export class BuildHotbar {
       this.slotContainers.push(slot);
     }
 
-    // "+" browser button (8th slot)
-    const plusSlot = new Container();
-    plusSlot.x = PADDING + this.entries.length * (SLOT_W + SLOT_GAP);
-    plusSlot.y = 18;
+    // "+" browser button (last slot)
+    this.plusSlot = new Container();
+    this.plusSlot.x = PADDING + this.entries.length * (SLOT_W + SLOT_GAP);
+    this.plusSlot.y = 18;
 
     const plusBg = new Graphics();
     plusBg.roundRect(0, 0, SLOT_W, SLOT_H, 2);
     plusBg.fill({ color: 0x111010, alpha: 0.5 });
     plusBg.roundRect(0, 0, SLOT_W, SLOT_H, 2);
     plusBg.stroke({ color: 0x3a3a2a, alpha: 0.4, width: 1 });
-    plusSlot.addChild(plusBg);
+    this.plusSlot.addChild(plusBg);
 
     const plusKeyText = new Text({ text: '0', style: slotKeyStyle });
     plusKeyText.x = 3;
     plusKeyText.y = 1;
-    plusSlot.addChild(plusKeyText);
+    this.plusSlot.addChild(plusKeyText);
 
     const plusLabel = new Text({
       text: '+',
@@ -280,9 +380,9 @@ export class BuildHotbar {
     });
     plusLabel.x = Math.round((SLOT_W - plusLabel.width) / 2);
     plusLabel.y = Math.round((SLOT_H - plusLabel.height) / 2);
-    plusSlot.addChild(plusLabel);
+    this.plusSlot.addChild(plusLabel);
 
-    this.container.addChild(plusSlot);
+    this.container.addChild(this.plusSlot);
   }
 
   private highlightSlots(): void {

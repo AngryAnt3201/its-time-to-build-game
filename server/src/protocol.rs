@@ -58,6 +58,7 @@ pub enum EntityData {
         model_lore_name: String,
         xp: u64,
         level: u32,
+        recruitable_cost: Option<i64>,
     },
     Building {
         building_type: BuildingTypeKind,
@@ -193,6 +194,20 @@ pub struct EconomySnapshot {
     pub expenditure_per_sec: f64,
 }
 
+// ── Wheel snapshot ────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WheelSnapshot {
+    pub tier: String,
+    pub tokens_per_rotation: f64,
+    pub agent_bonus_per_tick: f64,
+    pub heat: f32,
+    pub max_heat: f32,
+    pub is_cranking: bool,
+    pub assigned_agent_id: Option<u64>,
+    pub upgrade_cost: Option<i64>,
+}
+
 // ── Debug snapshot ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +242,7 @@ pub struct GameStateUpdate {
     pub log_entries: Vec<LogEntry>,
     pub audio_triggers: Vec<AudioEvent>,
     pub debug: DebugSnapshot,
+    pub wheel: WheelSnapshot,
     pub project_manager: Option<ProjectManagerState>,
 }
 
@@ -245,6 +261,13 @@ pub enum PlayerAction {
     },
     CrankStart,
     CrankStop,
+
+    // Home base actions
+    RecruitAgent { entity_id: u64 },
+    UpgradeWheel,
+    AssignAgentToWheel { agent_id: u64 },
+    UnassignAgentFromWheel,
+
     RollbackAgent,
     EquipWeapon { weapon_id: String },
     EquipArmor { armor_id: String },

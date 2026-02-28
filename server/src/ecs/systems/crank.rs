@@ -15,7 +15,7 @@ pub struct CrankResult {
 ///
 /// Returns a [`CrankResult`] describing how many tokens were generated and any
 /// log messages that should be emitted.
-pub fn crank_system(game_state: &mut GameState, player_cranking: bool) -> CrankResult {
+pub fn crank_system(game_state: &mut GameState, player_cranking: bool, agent_assigned: bool) -> CrankResult {
     let crank = &mut game_state.crank;
     let mut tokens_generated: f64 = 0.0;
     let mut log_message: Option<String> = None;
@@ -59,6 +59,17 @@ pub fn crank_system(game_state: &mut GameState, player_cranking: bool) -> CrankR
         _ => 0.0,
     };
     tokens_generated += passive_tokens;
+
+    // ── Agent-assigned passive generation ──────────────────────
+    if agent_assigned {
+        let agent_bonus = match crank.tier {
+            CrankTier::HandCrank => 0.05,
+            CrankTier::GearAssembly => 0.08,
+            CrankTier::WaterWheel => 0.10,
+            CrankTier::RunicEngine => 0.15,
+        };
+        tokens_generated += agent_bonus;
+    }
 
     // ── Apply to economy balance ─────────────────────────────────────
     // Balance is stored as i64 so we accumulate fractional tokens by

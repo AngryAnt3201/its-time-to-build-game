@@ -185,6 +185,11 @@ pub struct Assignment {
     pub task: TaskAssignment,
 }
 
+#[derive(Debug, Clone)]
+pub struct Recruitable {
+    pub cost: i64,
+}
+
 // ── Building Components ──────────────────────────────────────────────
 
 #[derive(Debug, Clone)]

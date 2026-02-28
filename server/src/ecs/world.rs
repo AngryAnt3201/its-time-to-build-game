@@ -1,14 +1,15 @@
 use hecs::World;
 
-use crate::protocol::{AgentStateKind, AgentTierKind, TaskAssignment};
+use crate::protocol::{AgentStateKind, AgentTierKind, BuildingTypeKind, TaskAssignment};
 
 use crate::game::upgrades::UpgradeState;
 
 use super::components::{
     Agent, AgentMorale, AgentName, AgentPersonality, AgentState, AgentStats, AgentTier, AgentXP,
-    ArmorType, Assignment, CrankState, CrankTier, CarryCapacity, Facing,
-    GamePhase, GameState, Health, Player, Position, TokenEconomy, TorchRange, Velocity,
-    VoiceProfile, WeaponType,
+    AgentVibeConfig, Assignment, Building, BuildingEffects, BuildingType, CombatPower, CarryCapacity,
+    ConstructionProgress, CrankState, CrankTier, GamePhase, GameState, Health, LightSource,
+    Player, Position, Recruitable, TokenEconomy, TorchRange, Velocity, VoiceProfile, WanderState,
+    WeaponType, ArmorType, Facing,
 };
 use super::weapon_stats;
 
@@ -34,18 +35,19 @@ pub fn create_world() -> (World, GameState) {
     ));
 
     // ── Spawn starting agent "sol" ───────────────────────────────────
-    world.spawn((
+    // Split into two steps to stay within hecs' tuple-size limit.
+    let sol = world.spawn((
         Agent,
         AgentName {
             name: "sol".to_string(),
         },
-        Position { x: 420.0, y: 320.0 },
+        Position { x: 400.0, y: 330.0 },
         Velocity::default(),
         AgentTier {
             tier: AgentTierKind::Apprentice,
         },
         AgentState {
-            state: AgentStateKind::Idle,
+            state: AgentStateKind::Dormant,
         },
         AgentMorale { value: 0.7 },
         AgentXP { xp: 0, level: 1 },
@@ -69,6 +71,58 @@ pub fn create_world() -> (World, GameState) {
             max: 50,
         },
     ));
+    world.insert(sol, (
+        Recruitable { cost: 10 },
+        AgentVibeConfig {
+            model_id: "ministral-3b-2501".to_string(),
+            model_lore_name: "ministral-3b".to_string(),
+            max_turns: 5,
+            turns_used: 0,
+            context_window: 32000,
+            token_burn_rate: 3,
+            error_chance_base: 0.15,
+            stars: 1,
+        },
+        WanderState {
+            home_x: 400.0,
+            home_y: 330.0,
+            waypoint_x: 400.0,
+            waypoint_y: 330.0,
+            pause_remaining: 0,
+            wander_radius: 120.0,
+            walk_target: None,
+        },
+    )).unwrap();
+
+    // ── Spawn Token Wheel (pre-built at spawn) ─────────────────
+    world.spawn((
+        Building,
+        Position { x: 370.0, y: 300.0 },
+        BuildingType { kind: BuildingTypeKind::TokenWheel },
+        ConstructionProgress {
+            current: 1.0,
+            total: 1.0,
+            assigned_agents: Vec::new(),
+        },
+        Health { current: 100, max: 100 },
+        BuildingEffects { effects: vec![] },
+        LightSource { radius: 60.0, color: (0.9, 0.75, 0.3) },
+    ));
+
+    // ── Spawn Crafting Table (pre-built at spawn) ──────────────
+    world.spawn((
+        Building,
+        Position { x: 430.0, y: 300.0 },
+        BuildingType { kind: BuildingTypeKind::CraftingTable },
+        ConstructionProgress {
+            current: 1.0,
+            total: 1.0,
+            assigned_agents: Vec::new(),
+        },
+        Health { current: 100, max: 100 },
+        BuildingEffects { effects: vec![] },
+        LightSource { radius: 40.0, color: (0.7, 0.6, 0.3) },
+    ));
 
     // ── Initial GameState ────────────────────────────────────────────
     let game_state = GameState {
@@ -85,7 +139,7 @@ pub fn create_world() -> (World, GameState) {
             tokens_per_rotation: 1.0,
         },
         economy: TokenEconomy {
-            balance: 50,
+            balance: 0,
             income_per_tick: 0.0,
             expenditure_per_tick: 0.0,
             income_sources: vec![],

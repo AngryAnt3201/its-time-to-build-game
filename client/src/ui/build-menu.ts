@@ -82,6 +82,29 @@ const cardLockedLabelStyle = new TextStyle({
   align: 'center',
 });
 
+const cardBuiltLabelStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 8,
+  fill: 0x448b44,
+  align: 'center',
+});
+
+const cardBuiltNameStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 11,
+  fill: 0x556655,
+  align: 'center',
+  wordWrap: true,
+  wordWrapWidth: 100,
+});
+
+const cardBuiltCostStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 9,
+  fill: 0x445544,
+  align: 'center',
+});
+
 const footerStyle = new TextStyle({
   fontFamily: FONT_FAMILY,
   fontSize: 10,
@@ -109,6 +132,17 @@ const GRID_TOP = HEADER_HEIGHT + 8;
  * Toggle with B key. Shows all buildings organized by tier across 4 pages.
  * Navigate with arrow keys, confirm with Enter, close with Esc/B.
  */
+/** Building types that can have multiple instances. */
+const STACKABLE_TYPES: Set<BuildingTypeKind> = new Set(['Pylon', 'ComputeFarm']);
+
+/** Building types with escalating cost per instance. */
+const ESCALATING_COST_TYPES: Set<BuildingTypeKind> = new Set(['Pylon', 'ComputeFarm']);
+
+/** Calculate escalating cost: base * 1.5^count (rounded up). */
+function escalatingCost(baseCost: number, existingCount: number): number {
+  return Math.ceil(baseCost * Math.pow(1.5, existingCount));
+}
+
 export class BuildMenu {
   readonly container: Container;
 
@@ -127,6 +161,9 @@ export class BuildMenu {
   private selectedIndex = 0;
   private currentPage = 1;
   private unlockedBuildings: Set<string> = new Set();
+
+  /** How many of each building type are already placed in the world. */
+  private placedBuildingCounts: Map<BuildingTypeKind, number> = new Map();
 
   // Panel elements
   private panel: Graphics;
@@ -205,6 +242,14 @@ export class BuildMenu {
   setUnlockedBuildings(ids: string[]): void {
     this.unlockedBuildings = new Set(ids);
     this.rebuildPage();
+  }
+
+  /** Update the count of each building type currently placed in the world. */
+  setPlacedBuildingCounts(counts: Map<BuildingTypeKind, number>): void {
+    this.placedBuildingCounts = counts;
+    if (this.visible) {
+      this.rebuildPage();
+    }
   }
 
   /** Toggle the menu open/closed. */
@@ -339,10 +384,21 @@ export class BuildMenu {
       return;
     }
 
+    // Prevent placement of already-built non-stackable buildings
+    const existingCount = this.placedBuildingCounts.get(building.type) ?? 0;
+    if (!STACKABLE_TYPES.has(building.type) && existingCount > 0) {
+      return;
+    }
+
+    // Calculate actual cost (escalating for ComputeFarm only)
+    const actualCost = ESCALATING_COST_TYPES.has(building.type)
+      ? escalatingCost(building.cost, existingCount)
+      : building.cost;
+
     this.placementBuilding = {
       type: building.type,
       name: building.name,
-      cost: building.cost,
+      cost: actualCost,
       description: building.description,
       tier: building.tier,
     };
@@ -457,6 +513,9 @@ export class BuildMenu {
     const buildingId = buildingTypeToId(building.type);
     const isLocked =
       this.unlockedBuildings.size > 0 && !this.unlockedBuildings.has(buildingId);
+    const existingCount = this.placedBuildingCounts.get(building.type) ?? 0;
+    const isStackable = STACKABLE_TYPES.has(building.type);
+    const isAlreadyBuilt = !isStackable && existingCount > 0;
 
     // Card background
     const bg = new Graphics();
@@ -472,7 +531,11 @@ export class BuildMenu {
     const iconX = Math.round((CARD_W - ICON_SIZE) / 2);
     const iconY = 6;
     iconPlaceholder.roundRect(iconX, iconY, ICON_SIZE, ICON_SIZE, 2);
-    iconPlaceholder.stroke({ color: isLocked ? 0x333333 : 0x3a3020, alpha: 0.5, width: 1 });
+    iconPlaceholder.stroke({
+      color: isLocked ? 0x333333 : isAlreadyBuilt ? 0x334433 : 0x3a3020,
+      alpha: 0.5,
+      width: 1,
+    });
     card.addChild(iconPlaceholder);
 
     if (isLocked) {
@@ -494,8 +557,27 @@ export class BuildMenu {
       lockedText.x = CARD_W / 2;
       lockedText.y = 52;
       card.addChild(lockedText);
+    } else if (isAlreadyBuilt) {
+      // Already built (non-stackable): show name dimmed + [BUILT]
+      const nameText = new Text({
+        text: building.name,
+        style: cardBuiltNameStyle,
+      });
+      nameText.anchor.set(0.5, 0);
+      nameText.x = CARD_W / 2;
+      nameText.y = 34;
+      card.addChild(nameText);
+
+      const builtText = new Text({
+        text: '[BUILT]',
+        style: cardBuiltLabelStyle,
+      });
+      builtText.anchor.set(0.5, 0);
+      builtText.x = CARD_W / 2;
+      builtText.y = 52;
+      card.addChild(builtText);
     } else {
-      // Unlocked: show name + cost
+      // Available: show name + cost (escalating for stackable)
       const nameText = new Text({
         text: building.name,
         style: cardNameStyle,
@@ -505,8 +587,16 @@ export class BuildMenu {
       nameText.y = 34;
       card.addChild(nameText);
 
+      const hasEscalating = ESCALATING_COST_TYPES.has(building.type);
+      const displayCost = hasEscalating
+        ? escalatingCost(building.cost, existingCount)
+        : building.cost;
+      const costLabel = hasEscalating && existingCount > 0
+        ? `${displayCost}\u25C6 (#${existingCount + 1})`
+        : `${displayCost}\u25C6`;
+
       const costText = new Text({
-        text: `${building.cost}\u25C6`,
+        text: costLabel,
         style: cardCostStyle,
       });
       costText.anchor.set(0.5, 0);
@@ -518,12 +608,24 @@ export class BuildMenu {
     return card;
   }
 
-  private isBuildingLocked(pageIndex: number): boolean {
+  /** Returns true if a building on this page is unavailable (locked or already built). */
+  private isBuildingUnavailable(pageIndex: number): boolean {
     const buildings = getBuildingsForPage(this.currentPage);
-    if (this.unlockedBuildings.size === 0) return false;
     const building = buildings[pageIndex];
     if (!building) return false;
-    return !this.unlockedBuildings.has(buildingTypeToId(building.type));
+
+    // Locked check
+    if (this.unlockedBuildings.size > 0 && !this.unlockedBuildings.has(buildingTypeToId(building.type))) {
+      return true;
+    }
+
+    // Already-built check (non-stackable only)
+    const existingCount = this.placedBuildingCounts.get(building.type) ?? 0;
+    if (!STACKABLE_TYPES.has(building.type) && existingCount > 0) {
+      return true;
+    }
+
+    return false;
   }
 
   private highlightSelected(): void {
@@ -535,7 +637,7 @@ export class BuildMenu {
       bg.clear();
 
       if (i === this.selectedIndex) {
-        const locked = this.isBuildingLocked(i);
+        const locked = this.isBuildingUnavailable(i);
         // Selected card: bright border, slightly brighter fill
         bg.roundRect(0, 0, CARD_W, CARD_H, 3);
         bg.fill({ color: locked ? 0x1a1210 : 0x1e1a14, alpha: 1 });
