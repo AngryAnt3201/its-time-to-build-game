@@ -1,3 +1,5 @@
+import { createRoot } from 'react-dom/client';
+import { TitleScreen } from './ui/title-screen/TitleScreen';
 import { Application, Container, Graphics } from 'pixi.js';
 import { Connection } from './network/connection';
 import { EntityRenderer } from './renderer/entities';
@@ -8,10 +10,15 @@ import { LogFeed } from './ui/log-feed';
 import { BuildMenu } from './ui/build-menu';
 import { UpgradeTree } from './ui/upgrade-tree';
 import { Grimoire } from './ui/grimoire';
+import { DebugPanel } from './ui/debug-panel';
 import type { GameStateUpdate, PlayerInput, PlayerAction } from './network/protocol';
 import { AudioManager } from './audio/manager';
 
-async function init() {
+async function startGame() {
+  // Hide the React overlay
+  const uiRoot = document.getElementById('ui-root')!;
+  uiRoot.style.display = 'none';
+
   const screenWidth = window.innerWidth;
   const screenHeight = window.innerHeight;
 
@@ -27,6 +34,7 @@ async function init() {
 
   // ── Create renderers and UI ─────────────────────────────────────
   const worldRenderer = new WorldRenderer();
+  await worldRenderer.loadAssets();
   const lightingRenderer = new LightingRenderer(screenWidth, screenHeight);
   const entityRenderer = new EntityRenderer();
   const hud = new HUD();
@@ -34,6 +42,7 @@ async function init() {
   const buildMenu = new BuildMenu();
   const upgradeTree = new UpgradeTree();
   const grimoire = new Grimoire();
+  const debugPanel = new DebugPanel();
 
   // ── Audio system ──────────────────────────────────────────────────
   const audioManager = new AudioManager();
@@ -83,6 +92,7 @@ async function init() {
   uiContainer.addChild(buildMenu.container);
   uiContainer.addChild(upgradeTree.container);
   uiContainer.addChild(grimoire.container);
+  uiContainer.addChild(debugPanel.container);
 
   // ── Add to stage in z-order ─────────────────────────────────────
   app.stage.addChild(worldContainer);
@@ -94,6 +104,7 @@ async function init() {
   buildMenu.resize(screenWidth, screenHeight);
   upgradeTree.resize(screenWidth, screenHeight);
   grimoire.resize(screenWidth, screenHeight);
+  debugPanel.resize(screenWidth, screenHeight);
 
   // ── Handle window resize ────────────────────────────────────────
   window.addEventListener('resize', () => {
@@ -104,6 +115,7 @@ async function init() {
     buildMenu.resize(w, h);
     upgradeTree.resize(w, h);
     grimoire.resize(w, h);
+    debugPanel.resize(w, h);
   });
 
   // ── Network connection ──────────────────────────────────────────
@@ -133,6 +145,17 @@ async function init() {
     };
     connection.sendInput(input);
     console.log(`[client] Placing ${buildingType} at (${x}, ${y})`);
+  };
+
+  // ── Debug panel callback ──────────────────────────────────────
+  debugPanel.onAction = (action: PlayerAction) => {
+    const input: PlayerInput = {
+      tick: clientTick,
+      movement: { x: 0, y: 0 },
+      action,
+      target: null,
+    };
+    connection.sendInput(input);
   };
 
   // ── Mouse tracking for placement mode ─────────────────────────
@@ -175,6 +198,21 @@ async function init() {
 
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     const key = e.key.toLowerCase();
+
+    // ── Debug panel key handling (backtick toggles) ───────────────
+    if (key === '`') {
+      debugPanel.toggle();
+      return;
+    }
+
+    if (debugPanel.visible) {
+      if (key === 'escape') {
+        debugPanel.close();
+        return;
+      }
+      // Swallow all other keys while debug panel is open
+      return;
+    }
 
     // ── Grimoire key handling (intercept before other menus) ──────
     if (key === 'g' && !buildMenu.visible && !upgradeTree.visible) {
@@ -277,7 +315,7 @@ async function init() {
     clientTick++;
 
     // Block movement and actions while any overlay is open
-    const menuBlocking = buildMenu.visible || upgradeTree.visible || grimoire.visible;
+    const menuBlocking = buildMenu.visible || upgradeTree.visible || grimoire.visible || debugPanel.visible;
 
     // Build movement vector from pressed keys
     const movement = { x: 0, y: 0 };
@@ -319,6 +357,9 @@ async function init() {
       connection.sendInput(input);
     }
 
+    // ── Update visible terrain chunks around the player ──────────
+    worldRenderer.updateVisibleChunks(player.x, player.y);
+
     // ── Update from server state ──────────────────────────────────
     if (latestState) {
       const state = latestState;
@@ -327,6 +368,12 @@ async function init() {
       const pos = state.player.position;
       player.x = pos.x;
       player.y = pos.y;
+
+      // ── Camera: center world container on player ─────────────────
+      const halfW = window.innerWidth / 2;
+      const halfH = window.innerHeight / 2;
+      worldContainer.x = halfW - pos.x;
+      worldContainer.y = halfH - pos.y;
 
       // Update torch light position and radius
       torchLight.x = pos.x;
@@ -346,6 +393,9 @@ async function init() {
       // Update HUD with player snapshot and economy
       hud.update(state.player, state.economy);
 
+      // Update debug panel with live server state
+      debugPanel.updateState(state.debug);
+
       // Add new log entries to log feed (only process new ticks)
       if (state.tick > previousTick && state.log_entries.length > 0) {
         logFeed.addEntries(state.log_entries);
@@ -363,4 +413,7 @@ async function init() {
   });
 }
 
-init();
+// Mount React title screen
+const uiRoot = document.getElementById('ui-root')!;
+const root = createRoot(uiRoot);
+root.render(<TitleScreen onPlay={() => startGame()} />);
