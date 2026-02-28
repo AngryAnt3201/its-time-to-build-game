@@ -577,35 +577,41 @@ async function startGame() {
     }
 
     if (nearestBuildingId !== null) {
-      const bid = buildingTypeToId(nearestBuildingType);
-      const name = buildingTypeToName(nearestBuildingType);
-      const status = latestState?.project_manager?.building_statuses?.[bid] ?? 'NotInitialized';
-      const assignments = latestState?.project_manager?.agent_assignments?.[bid] ?? [];
+      // Home base buildings — skip the default building toolbar entirely
+      if (nearestBuildingType === 'TokenWheel' || nearestBuildingType === 'CraftingTable') {
+        // No hover tooltip for home base buildings — interact with E key
+        if (buildingToolbar.visible) buildingToolbar.scheduleHide();
+      } else {
+        const bid = buildingTypeToId(nearestBuildingType);
+        const name = buildingTypeToName(nearestBuildingType);
+        const status = latestState?.project_manager?.building_statuses?.[bid] ?? 'NotInitialized';
+        const assignments = latestState?.project_manager?.agent_assignments?.[bid] ?? [];
 
-      // Resolve agent names from entity map
-      const assignedAgents = assignments.map(agentId => {
-        const agentEntity = entityMap.get(agentId);
-        const agentData = agentEntity ? (agentEntity.data as { Agent?: { name: string; tier: string } }).Agent : null;
-        return { id: agentId, name: agentData?.name ?? '?', tier: agentData?.tier ?? 'Apprentice' };
-      });
+        // Resolve agent names from entity map
+        const assignedAgents = assignments.map(agentId => {
+          const agentEntity = entityMap.get(agentId);
+          const agentData = agentEntity ? (agentEntity.data as { Agent?: { name: string; tier: string } }).Agent : null;
+          return { id: agentId, name: agentData?.name ?? '?', tier: agentData?.tier ?? 'Apprentice' };
+        });
 
-      // Passive buildings — show description instead of agents/open app
-      const passiveDescriptions: Record<string, string> = {
-        Pylon: 'Enables observability into what agents are doing.',
-        ComputeFarm: 'Passively generates tokens over time.',
-      };
-      const desc = passiveDescriptions[nearestBuildingType];
+        // Passive buildings — show description instead of agents/open app
+        const passiveDescriptions: Record<string, string> = {
+          Pylon: 'Enables observability into what agents are doing.',
+          ComputeFarm: 'Passively generates tokens over time.',
+        };
+        const desc = passiveDescriptions[nearestBuildingType];
 
-      // Feed idle agents to the picker (only for active buildings)
-      if (!desc) buildingToolbar.setIdleAgents(getIdleAgents());
-      buildingToolbar.show(bid, name, status, assignedAgents, desc ? { description: desc } : undefined);
-      buildingToolbar.cancelScheduledHide();
-      toolbarBuildingEntityId = nearestBuildingId;
+        // Feed idle agents to the picker (only for active buildings)
+        if (!desc) buildingToolbar.setIdleAgents(getIdleAgents());
+        buildingToolbar.show(bid, name, status, assignedAgents, desc ? { description: desc } : undefined);
+        buildingToolbar.cancelScheduledHide();
+        toolbarBuildingEntityId = nearestBuildingId;
 
-      // Position BELOW the building in screen coords (building sprite is 12px, so offset by ~10 world px)
-      const screenBx = nearestBx * ZOOM + worldContainer.x;
-      const screenBy = nearestBy * ZOOM + worldContainer.y + 10 * ZOOM;
-      buildingToolbar.updatePosition(screenBx, screenBy);
+        // Position BELOW the building in screen coords (building sprite is 12px, so offset by ~10 world px)
+        const screenBx = nearestBx * ZOOM + worldContainer.x;
+        const screenBy = nearestBy * ZOOM + worldContainer.y + 10 * ZOOM;
+        buildingToolbar.updatePosition(screenBx, screenBy);
+      }
     } else if (buildingToolbar.visible) {
       buildingToolbar.scheduleHide();
     }
@@ -747,6 +753,31 @@ async function startGame() {
             };
             connection.sendInput(input);
           }
+        }
+      }
+
+      // ── Home base building click — open wheel/crafting panels ──
+      if (clickedAgentId === null) {
+        const worldX = (e.clientX - worldContainer.x) / ZOOM;
+        const worldY = (e.clientY - worldContainer.y) / ZOOM;
+        let nearestBldgType = '';
+        let nearestBldgDist = 32;
+        for (const entity of entityMap.values()) {
+          if (entity.kind !== 'Building') continue;
+          const data = (entity.data as { Building?: { building_type: string; construction_pct: number } }).Building;
+          if (!data) continue;
+          const dx = entity.position.x - worldX;
+          const dy = entity.position.y - worldY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < nearestBldgDist) {
+            nearestBldgDist = dist;
+            nearestBldgType = data.building_type;
+          }
+        }
+        if (nearestBldgType === 'TokenWheel') {
+          wheelPanel.open();
+        } else if (nearestBldgType === 'CraftingTable') {
+          craftingModal.open();
         }
       }
     }

@@ -41,7 +41,7 @@ pub fn create_world() -> (World, GameState) {
         AgentName {
             name: "sol".to_string(),
         },
-        Position { x: 400.0, y: 330.0 },
+        Position { x: 400.0, y: 390.0 },
         Velocity::default(),
         AgentTier {
             tier: AgentTierKind::Apprentice,
@@ -85,9 +85,9 @@ pub fn create_world() -> (World, GameState) {
         },
         WanderState {
             home_x: 400.0,
-            home_y: 330.0,
+            home_y: 390.0,
             waypoint_x: 400.0,
-            waypoint_y: 330.0,
+            waypoint_y: 390.0,
             pause_remaining: 0,
             wander_radius: 120.0,
             walk_target: None,
@@ -97,7 +97,7 @@ pub fn create_world() -> (World, GameState) {
     // ── Spawn Token Wheel (pre-built at spawn) ─────────────────
     world.spawn((
         Building,
-        Position { x: 370.0, y: 300.0 },
+        Position { x: 310.0, y: 300.0 },
         BuildingType { kind: BuildingTypeKind::TokenWheel },
         ConstructionProgress {
             current: 1.0,
@@ -112,7 +112,7 @@ pub fn create_world() -> (World, GameState) {
     // ── Spawn Crafting Table (pre-built at spawn) ──────────────
     world.spawn((
         Building,
-        Position { x: 430.0, y: 300.0 },
+        Position { x: 490.0, y: 300.0 },
         BuildingType { kind: BuildingTypeKind::CraftingTable },
         ConstructionProgress {
             current: 1.0,
