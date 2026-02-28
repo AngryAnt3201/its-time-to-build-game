@@ -1,4 +1,4 @@
-import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import type { BuildingTypeKind } from '../network/protocol';
 import {
   getBuildingsForPage,
@@ -7,6 +7,7 @@ import {
   buildingTypeToId,
   type BuildingDef,
 } from '../data/buildings';
+import { getBlueprintForBuilding } from '../data/crafting';
 
 // ── Re-export for compatibility with hotbar ─────────────────────────
 
@@ -161,6 +162,7 @@ export class BuildMenu {
   private selectedIndex = 0;
   private currentPage = 1;
   private unlockedBuildings: Set<string> = new Set();
+  private ownedBlueprints: Set<string> = new Set();
 
   /** How many of each building type are already placed in the world. */
   private placedBuildingCounts: Map<BuildingTypeKind, number> = new Map();
@@ -250,6 +252,12 @@ export class BuildMenu {
     if (this.visible) {
       this.rebuildPage();
     }
+  }
+
+  /** Update which blueprints the player owns. */
+  setOwnedBlueprints(blueprintTypes: string[]): void {
+    this.ownedBlueprints = new Set(blueprintTypes);
+    if (this.visible) this.rebuildPage();
   }
 
   /** Toggle the menu open/closed. */
@@ -537,6 +545,24 @@ export class BuildMenu {
       width: 1,
     });
     card.addChild(iconPlaceholder);
+
+    // Blueprint icon (top-right corner of card)
+    const bp = getBlueprintForBuilding(building.type);
+    if (bp) {
+      const owned = this.ownedBlueprints.has(building.type);
+      Assets.load<Texture>(bp.icon).then((tex) => {
+        tex.source.scaleMode = 'nearest';
+        const bpSprite = new Sprite(tex);
+        bpSprite.label = 'bp-icon';
+        bpSprite.width = 16;
+        bpSprite.height = 16;
+        bpSprite.x = CARD_W - 18;
+        bpSprite.y = 2;
+        bpSprite.alpha = owned ? 1 : 0.35;
+        if (!owned) bpSprite.tint = 0x888888;
+        card.addChild(bpSprite);
+      }).catch(() => { /* texture not found — skip */ });
+    }
 
     if (isLocked) {
       // Locked: show "????" and [LOCKED]

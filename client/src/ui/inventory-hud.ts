@@ -1,4 +1,6 @@
-import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
+import { ALL_MATERIALS, getBlueprintForBuilding } from '../data/crafting';
+import type { BuildingTypeKind } from '../network/protocol';
 
 // ── Style constants ──────────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ const countStyle = new TextStyle({
 const SLOT_SIZE = 36;
 const SLOT_GAP = 4;
 const COLS = 5;
-const ROWS = 2;
+const ROWS = 3;
 const PADDING = 8;
 
 // ── Corner brackets ─────────────────────────────────────────────────
@@ -82,6 +84,10 @@ export class InventoryHUD {
   private panelBg: Graphics;
   private brackets: Graphics;
 
+  // Texture cache for item icons
+  private textures: Map<string, Texture> = new Map();
+  private texturesLoaded = false;
+
   constructor() {
     this.container = new Container();
     this.container.label = 'inventory-hud';
@@ -103,6 +109,9 @@ export class InventoryHUD {
     // Build grid
     this.buildGrid();
     this.drawPanel();
+
+    // Pre-load item textures
+    this.loadTextures();
   }
 
   // ── Public API ───────────────────────────────────────────────────
@@ -157,6 +166,63 @@ export class InventoryHUD {
     }
     for (let i = 0; i < this.slots.length; i++) {
       this.redrawSlot(i);
+    }
+  }
+
+  // ── Texture loading ─────────────────────────────────────────────
+
+  private getIconPath(itemType: string): string | null {
+    if (itemType.startsWith('material:')) {
+      const id = itemType.slice('material:'.length);
+      return `/icons/crafting_materials/${id}.png`;
+    }
+    if (itemType.startsWith('blueprint:')) {
+      const buildingType = itemType.slice('blueprint:'.length) as BuildingTypeKind;
+      const bp = getBlueprintForBuilding(buildingType);
+      return bp ? bp.icon : null;
+    }
+    return null;
+  }
+
+  private async loadTextures(): Promise<void> {
+    try {
+      // Load all material textures
+      const materialPromises = ALL_MATERIALS.map(async (m) => {
+        const path = `/icons/crafting_materials/${m.id}.png`;
+        const tex = await Assets.load<Texture>(path);
+        tex.source.scaleMode = 'nearest';
+        this.textures.set(`material:${m.id}`, tex);
+      });
+
+      await Promise.all(materialPromises);
+      this.texturesLoaded = true;
+
+      // Re-render all filled slots now that textures are available
+      for (let i = 0; i < this.slots.length; i++) {
+        if (this.slots[i]) this.redrawSlot(i);
+      }
+    } catch (err) {
+      console.warn('[inventory] Failed to load textures:', err);
+    }
+  }
+
+  /** Load a single texture on demand (e.g. blueprint icons) and re-render the slot. */
+  private async loadTextureForItem(itemType: string, slotIndex: number): Promise<void> {
+    // Skip if already cached or no path available
+    if (this.textures.has(itemType)) return;
+    const path = this.getIconPath(itemType);
+    if (!path) return;
+
+    try {
+      const tex = await Assets.load<Texture>(path);
+      tex.source.scaleMode = 'nearest';
+      this.textures.set(itemType, tex);
+      // Re-render the slot if the item is still there
+      if (this.slots[slotIndex]?.itemType === itemType) {
+        this.redrawSlot(slotIndex);
+      }
+    } catch (err) {
+      console.warn(`[inventory] Failed to load texture for ${itemType}:`, err);
     }
   }
 
@@ -240,14 +306,32 @@ export class InventoryHUD {
     bg.stroke({ color: 0x3a3020, alpha: 0.6, width: 1 });
     slotC.addChild(bg);
 
-    // Item name (abbreviated)
-    const abbrev = slot.itemType.length > 4
-      ? slot.itemType.slice(0, 4)
-      : slot.itemType;
-    const label = new Text({ text: abbrev, style: itemStyle });
-    label.x = Math.round((SLOT_SIZE - label.width) / 2);
-    label.y = Math.round((SLOT_SIZE - label.height) / 2) - 4;
-    slotC.addChild(label);
+    // Item icon (sprite) or text fallback
+    let iconRendered = false;
+    const tex = this.textures.get(slot.itemType);
+    if (tex) {
+      const sprite = new Sprite(tex);
+      sprite.width = SLOT_SIZE - 8;
+      sprite.height = SLOT_SIZE - 8;
+      sprite.x = 4;
+      sprite.y = 4;
+      slotC.addChild(sprite);
+      iconRendered = true;
+    } else {
+      // Attempt async load for textures not yet cached (e.g. blueprints)
+      this.loadTextureForItem(slot.itemType, index);
+    }
+
+    // Fallback: text abbreviation
+    if (!iconRendered) {
+      const abbrev = slot.itemType.length > 4
+        ? slot.itemType.slice(0, 4)
+        : slot.itemType;
+      const label = new Text({ text: abbrev, style: itemStyle });
+      label.x = Math.round((SLOT_SIZE - label.width) / 2);
+      label.y = Math.round((SLOT_SIZE - label.height) / 2) - 4;
+      slotC.addChild(label);
+    }
 
     // Count badge (bottom-right)
     if (slot.count > 1) {

@@ -136,10 +136,11 @@ pub fn create_world() -> (World, GameState) {
             tier: CrankTier::HandCrank,
             is_cranking: false,
             assigned_agent: None,
-            tokens_per_rotation: 1.0,
+            tokens_per_rotation: 0.02,
         },
         economy: TokenEconomy {
             balance: 0,
+            fractional: 0.0,
             income_per_tick: 0.0,
             expenditure_per_tick: 0.0,
             income_sources: vec![],
@@ -152,6 +153,7 @@ pub fn create_world() -> (World, GameState) {
         god_mode: false,
         player_dead: false,
         death_tick: None,
+        inventory: Vec::new(),
     };
 
     (world, game_state)

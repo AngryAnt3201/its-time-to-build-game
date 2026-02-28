@@ -1,4 +1,5 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { ALL_RECIPES, type CraftingRecipe, getMaterial } from '../data/crafting';
 
 // ── Style constants ──────────────────────────────────────────────────
 
@@ -47,6 +48,12 @@ const descStyle = new TextStyle({
   fontSize: 10,
   fontStyle: 'italic',
   fill: 0x555555,
+});
+
+const matCostStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 9,
+  fill: 0x8a6a3a,  // muted amber
 });
 
 const instructionStyle = new TextStyle({
@@ -183,7 +190,7 @@ const ALL_UPGRADES: UpgradeEntry[] = [
 
 const PANEL_WIDTH = 460;
 const PANEL_HEIGHT = 540;
-const ROW_HEIGHT = 48;
+const ROW_HEIGHT = 60;
 const TIER_HEADER_HEIGHT = 28;
 const SCROLL_TOP = 44;
 const VISIBLE_HEIGHT = PANEL_HEIGHT - SCROLL_TOP - 30; // leave room for instructions
@@ -464,6 +471,22 @@ export class UpgradeTree {
         desc.x = 28;
         desc.y = 22;
         row.addChild(desc);
+
+        // Material requirements
+        const recipe = ALL_RECIPES.find(r => r.category === 'upgrade' && r.result === entry.id);
+        if (recipe && recipe.ingredients.length > 0) {
+          const matText = recipe.ingredients
+            .map(ing => {
+              const mat = getMaterial(ing.material);
+              return `${ing.count}\u00d7 ${mat?.name ?? ing.material}`;
+            })
+            .join(', ');
+
+          const matLabel = new Text({ text: matText, style: matCostStyle });
+          matLabel.x = 28;
+          matLabel.y = 32;
+          row.addChild(matLabel);
+        }
 
         row.x = 8;
         row.y = yOffset;

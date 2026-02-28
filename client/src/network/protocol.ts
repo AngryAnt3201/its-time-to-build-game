@@ -198,6 +198,13 @@ export interface ProjectManagerState {
   agent_assignments: Record<string, number[]>;
 }
 
+// ── Inventory ─────────────────────────────────────────────────────
+
+export interface InventoryItem {
+  item_type: string;
+  count: number;
+}
+
 // ── Combat events (for client VFX) ────────────────────────────────
 
 export interface CombatEvent {
@@ -238,6 +245,8 @@ export interface GameStateUpdate {
   combat_events: CombatEvent[];
   player_hit: boolean;
   player_hit_damage: number;
+  inventory: InventoryItem[];
+  purchased_upgrades: string[];
 }
 
 // ── Server → Client message wrapper ────────────────────────────────
@@ -267,6 +276,12 @@ export type PlayerAction =
   | "UnassignAgentFromWheel"
   | { EquipWeapon: { weapon_id: string } }
   | { EquipArmor: { armor_id: string } }
+  // Crafting actions
+  | { CraftItem: { recipe_id: string } }
+  | { OpenChest: { entity_id: number } }
+  | { PurchaseUpgrade: { upgrade_id: string } }
+  | { AddInventoryItem: { item_type: string; count: number } }
+  | { RemoveInventoryItem: { item_type: string; count: number } }
   // Debug actions
   | { DebugSetTokens: { amount: number } }
   | { DebugAddTokens: { amount: number } }

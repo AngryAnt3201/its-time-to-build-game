@@ -287,6 +287,8 @@ pub struct CrankState {
 #[derive(Debug, Clone)]
 pub struct TokenEconomy {
     pub balance: i64,
+    /// Sub-token accumulator so fractional generation isn't lost.
+    pub fractional: f64,
     pub income_per_tick: f64,
     pub expenditure_per_tick: f64,
     pub income_sources: Vec<(String, f64)>,
@@ -315,6 +317,42 @@ pub struct GameState {
     pub god_mode: bool,
     pub player_dead: bool,
     pub death_tick: Option<u64>,
+    pub inventory: Vec<crate::protocol::InventoryItem>,
+}
+
+impl GameState {
+    pub fn add_inventory_item(&mut self, item_type: &str, count: u32) {
+        for item in &mut self.inventory {
+            if item.item_type == item_type {
+                item.count += count;
+                return;
+            }
+        }
+        self.inventory.push(crate::protocol::InventoryItem {
+            item_type: item_type.to_string(),
+            count,
+        });
+    }
+
+    pub fn remove_inventory_item(&mut self, item_type: &str, count: u32) -> bool {
+        for item in &mut self.inventory {
+            if item.item_type == item_type {
+                if item.count >= count {
+                    item.count -= count;
+                    if item.count == 0 {
+                        self.inventory.retain(|i| i.count > 0);
+                    }
+                    return true;
+                }
+                return false;
+            }
+        }
+        false
+    }
+
+    pub fn has_inventory_item(&self, item_type: &str, count: u32) -> bool {
+        self.inventory.iter().any(|i| i.item_type == item_type && i.count >= count)
+    }
 }
 
 // ── Discovery Component ─────────────────────────────────────────────

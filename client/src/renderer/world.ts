@@ -488,6 +488,7 @@ export class WorldRenderer {
     this.placeObjectGrid(layer, cx, cy, 4, OBJECTS_SMALL, 30, 1001);
     this.placeObjectGrid(layer, cx, cy, 8, OBJECTS_MEDIUM, 20, 2002);
     this.placeObjectGrid(layer, cx, cy, 12, OBJECTS_LARGE, 12, 3003);
+    this.placeChests(layer, cx, cy);
   }
 
   private placeObjectGrid(
@@ -522,6 +523,50 @@ export class WorldRenderer {
         const fog = Math.max(0.12, 1.0 - dist / 250);
         spr.tint = tintWithBrightness(0xffffff, fog);
         spr.alpha = 0.95;
+
+        layer.addChild(spr);
+      }
+    }
+  }
+
+  // ── Chest placement ──────────────────────────────────────────────
+
+  private placeChests(layer: Container, cx: number, cy: number): void {
+    const CHEST_SEED = 7777;
+    const STEP = 16; // check every 16 tiles → ~4 candidates per chunk
+
+    for (let ty = 0; ty < CHUNK_SIZE; ty += STEP) {
+      for (let tx = 0; tx < CHUNK_SIZE; tx += STEP) {
+        const wx = cx * CHUNK_SIZE + tx;
+        const wy = cy * CHUNK_SIZE + ty;
+
+        if (!isWalkable(wx, wy)) continue;
+
+        // ~12% chance per candidate position
+        const roll = hash(wx, wy, CHEST_SEED) % 100;
+        if (roll >= 12) continue;
+
+        const tex = this.objectTextures.get('crystal2.png');
+        if (!tex) continue;
+
+        const spr = new Sprite(tex);
+
+        // Slight random offset for natural feel (±4 pixels)
+        const offsetX = ((hash(wx, wy, CHEST_SEED + 200) % 9) - 4);
+        const offsetY = ((hash(wx, wy, CHEST_SEED + 300) % 9) - 4);
+
+        spr.width = 32;
+        spr.height = 32;
+        spr.x = tx * TILE_PX + offsetX - 16 + TILE_PX / 2;
+        spr.y = ty * TILE_PX + offsetY - 16 + TILE_PX / 2;
+
+        // Golden tint to make chests visually distinct
+        const dist = Math.sqrt(wx * wx + wy * wy);
+        const fog = Math.max(0.12, 1.0 - dist / 250);
+        spr.tint = tintWithBrightness(0xd4a017, fog);
+        spr.alpha = 0.95;
+
+        spr.label = `chest_${wx}_${wy}`;
 
         layer.addChild(spr);
       }

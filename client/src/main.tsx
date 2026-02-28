@@ -116,6 +116,15 @@ async function startGame() {
   const logFeed = new LogFeed(screenWidth, screenHeight);
   const buildMenu = new BuildMenu();
   const upgradeTree = new UpgradeTree();
+  upgradeTree.onPurchase = (upgradeId: string) => {
+    if (!connectionRef) return;
+    connectionRef.sendInput({
+      tick: clientTickRef,
+      movement: { x: 0, y: 0 },
+      action: { PurchaseUpgrade: { upgrade_id: upgradeId } },
+      target: null,
+    });
+  };
   const grimoire = new Grimoire();
   const debugPanel = new DebugPanel();
   const minimap = new Minimap();
@@ -603,7 +612,8 @@ async function startGame() {
 
         // Feed idle agents to the picker (only for active buildings)
         if (!desc) buildingToolbar.setIdleAgents(getIdleAgents());
-        buildingToolbar.show(bid, name, status, assignedAgents, desc ? { description: desc } : undefined);
+        const nearPylon = isBuildingNearPylon(bid, entityMap);
+        buildingToolbar.show(bid, name, status, assignedAgents, desc ? { description: desc } : { noPylon: !nearPylon });
         buildingToolbar.cancelScheduledHide();
         toolbarBuildingEntityId = nearestBuildingId;
 
@@ -666,7 +676,8 @@ async function startGame() {
           level: nearestAgentData.level,
         };
 
-        agentWorldTooltip.show(agentWorldData, e.clientX, e.clientY, agentBuildingId, agentBuildingName);
+        const agentNoPylon = agentBuildingId ? !isBuildingNearPylon(agentBuildingId, entityMap) : false;
+        agentWorldTooltip.show(agentWorldData, e.clientX, e.clientY, agentBuildingId, agentBuildingName, agentNoPylon);
         agentWorldTooltip.cancelScheduledHide();
       } else if (agentWorldTooltip.visible) {
         agentWorldTooltip.scheduleHide();
@@ -1022,40 +1033,63 @@ async function startGame() {
         let interactedWithBuilding = false;
         const px = player.x;
         const py = player.y;
-        let nearestDist = 48; // interaction range in world pixels
-        let nearestType = '';
-        for (const entity of entityMap.values()) {
-          if (entity.kind !== 'Building') continue;
-          const data = (entity.data as { Building?: { building_type: string; construction_pct: number } }).Building;
-          if (!data || data.construction_pct < 1.0) continue;
-          const dx = entity.position.x - px;
-          const dy = entity.position.y - py;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < nearestDist) {
-            nearestDist = dist;
-            nearestType = data.building_type;
+
+        // Check for nearby chest entities first
+        if (!interactedWithBuilding) {
+          for (const entity of entityMap.values()) {
+            if (entity.kind !== 'Item') continue;
+            const data = (entity.data as { Item?: { item_type: string } }).Item;
+            if (!data || data.item_type !== 'chest') continue;
+            const dx = entity.position.x - px;
+            const dy = entity.position.y - py;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 40) {
+              const input: PlayerInput = {
+                tick: clientTick,
+                movement: { x: 0, y: 0 },
+                action: { OpenChest: { entity_id: entity.id } },
+                target: null,
+              };
+              connection.sendInput(input);
+              interactedWithBuilding = true;
+              break;
+            }
           }
-        }
-        if (nearestType === 'TokenWheel') {
-          wheelPanel.open();
-          interactedWithBuilding = true;
-        } else if (nearestType === 'CraftingTable') {
-          craftingModal.open();
-          interactedWithBuilding = true;
-        } else if (nearestType) {
-          const buildingId = buildingTypeToId(nearestType);
-          const name = buildingTypeToName(nearestType);
-          const status = latestState?.project_manager?.building_statuses?.[buildingId] ?? 'NotInitialized';
-          buildingPanel.open(buildingId, name, `Building: ${name}`, status);
-          buildingToolbar.hide();
-          toolbarBuildingEntityId = null;
-          interactedWithBuilding = true;
         }
 
         if (!interactedWithBuilding) {
-          crankActive = !crankActive;
-          action = crankActive ? 'CrankStart' : 'CrankStop';
+          let nearestDist = 48; // interaction range in world pixels
+          let nearestType = '';
+          for (const entity of entityMap.values()) {
+            if (entity.kind !== 'Building') continue;
+            const data = (entity.data as { Building?: { building_type: string; construction_pct: number } }).Building;
+            if (!data || data.construction_pct < 1.0) continue;
+            const dx = entity.position.x - px;
+            const dy = entity.position.y - py;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearestType = data.building_type;
+            }
+          }
+          if (nearestType === 'TokenWheel') {
+            wheelPanel.open();
+            interactedWithBuilding = true;
+          } else if (nearestType === 'CraftingTable') {
+            craftingModal.open();
+            interactedWithBuilding = true;
+          } else if (nearestType) {
+            const buildingId = buildingTypeToId(nearestType);
+            const name = buildingTypeToName(nearestType);
+            const status = latestState?.project_manager?.building_statuses?.[buildingId] ?? 'NotInitialized';
+            buildingPanel.open(buildingId, name, `Building: ${name}`, status);
+            buildingToolbar.hide();
+            toolbarBuildingEntityId = null;
+            interactedWithBuilding = true;
+          }
         }
+
+        // Cranking is now done via the Spin button in the Wheel Panel
       }
     }
 
@@ -1301,6 +1335,28 @@ async function startGame() {
           const status = state.project_manager.building_statuses[currentId] ?? 'NotInitialized';
           buildingPanel.updateStatus(status);
         }
+      }
+
+      // ── Sync inventory to HUDs ─────────────────────────────────────
+      if (state.inventory) {
+        inventoryHud.setItems(state.inventory.map(i => ({ type: i.item_type, count: i.count })));
+        craftingModal.updateInventory(state.inventory);
+      }
+      craftingModal.updateTokens(state.economy.balance);
+
+      // ── Sync purchased upgrades ─────────────────────────────────────
+      if (state.purchased_upgrades) {
+        upgradeTree.updateState(state.economy.balance, state.purchased_upgrades);
+        craftingModal.updatePurchasedUpgrades(state.purchased_upgrades);
+      }
+
+      // ── Sync blueprint ownership to build menu & hotbar ─────────────
+      if (state.inventory) {
+        const ownedBlueprints = state.inventory
+          .filter(i => i.item_type.startsWith('blueprint:'))
+          .map(i => i.item_type.slice('blueprint:'.length));
+        buildMenu.setOwnedBlueprints(ownedBlueprints);
+        buildHotbar.setOwnedBlueprints(ownedBlueprints);
       }
 
       // ── Update building toolbar position to follow camera ────────

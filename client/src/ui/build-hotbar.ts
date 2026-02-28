@@ -1,5 +1,6 @@
-import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import type { BuildingTypeKind } from '../network/protocol';
+import { getBlueprintForBuilding } from '../data/crafting';
 
 /** Building types that can have multiple instances (never hidden from hotbar). */
 const STACKABLE_TYPES: Set<BuildingTypeKind> = new Set(['Pylon', 'ComputeFarm']);
@@ -125,6 +126,9 @@ export class BuildHotbar {
   /** How many of each building type are already placed. */
   private placedBuildingCounts: Map<BuildingTypeKind, number> = new Map();
 
+  /** Which blueprint types the player owns. */
+  private ownedBlueprints: Set<string> = new Set();
+
   constructor() {
     this.container = new Container();
     this.container.label = 'build-hotbar';
@@ -146,6 +150,12 @@ export class BuildHotbar {
   }
 
   // ── Public API ───────────────────────────────────────────────────
+
+  /** Update which blueprints the player owns. */
+  setOwnedBlueprints(blueprintTypes: string[]): void {
+    this.ownedBlueprints = new Set(blueprintTypes);
+    this.rebuildAllSlots();
+  }
 
   resize(screenWidth: number, screenHeight: number): void {
     this.lastScreenWidth = screenWidth;
@@ -348,6 +358,24 @@ export class BuildHotbar {
       costText.x = Math.round((SLOT_W - costText.width) / 2);
       costText.y = SLOT_H - 14;
       slot.addChild(costText);
+
+      // Blueprint icon (top-right corner)
+      const bp = getBlueprintForBuilding(entry.type);
+      if (bp) {
+        const owned = this.ownedBlueprints.has(entry.type);
+        Assets.load<Texture>(bp.icon).then((tex) => {
+          tex.source.scaleMode = 'nearest';
+          const bpSprite = new Sprite(tex);
+          bpSprite.label = 'bp-icon';
+          bpSprite.width = 16;
+          bpSprite.height = 16;
+          bpSprite.x = SLOT_W - 18;
+          bpSprite.y = 2;
+          bpSprite.alpha = owned ? 1 : 0.3;
+          if (!owned) bpSprite.tint = 0x888888;
+          slot.addChild(bpSprite);
+        }).catch(() => { /* texture not found — skip */ });
+      }
 
       this.container.addChild(slot);
       this.slotContainers.push(slot);

@@ -248,6 +248,14 @@ pub struct CombatEvent {
     pub rogue_type: Option<RogueTypeKind>,
 }
 
+// ── Inventory ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InventoryItem {
+    pub item_type: String,
+    pub count: u32,
+}
+
 // ── Main game state update (Server → Client) ──────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,6 +274,8 @@ pub struct GameStateUpdate {
     pub combat_events: Vec<CombatEvent>,
     pub player_hit: bool,
     pub player_hit_damage: i32,
+    pub inventory: Vec<InventoryItem>,
+    pub purchased_upgrades: Vec<String>,
 }
 
 // ── Client → Server messages ───────────────────────────────────────
@@ -293,6 +303,13 @@ pub enum PlayerAction {
     RollbackAgent,
     EquipWeapon { weapon_id: String },
     EquipArmor { armor_id: String },
+
+    // Crafting actions
+    CraftItem { recipe_id: String },
+    OpenChest { entity_id: u64 },
+    PurchaseUpgrade { upgrade_id: String },
+    AddInventoryItem { item_type: String, count: u32 },
+    RemoveInventoryItem { item_type: String, count: u32 },
 
     // Debug actions
     DebugSetTokens { amount: i64 },

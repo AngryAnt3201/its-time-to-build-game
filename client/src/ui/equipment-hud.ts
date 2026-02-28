@@ -350,9 +350,9 @@ export class EquipmentHUD {
   // ── Public API ───────────────────────────────────────────────────
 
   resize(_screenWidth: number, screenHeight: number): void {
-    // Inventory panel height ≈ 2×(36+4) + 28 + 8 = 116, positioned at bottom-left with 10px margin.
+    // Inventory panel height ≈ 3×(36+4) + 28 + 8 = 156, positioned at bottom-left with 10px margin.
     // We sit directly above the inventory with a small gap.
-    const inventoryH = 116;
+    const inventoryH = 156;
     this.container.x = 6;
     this.container.y = screenHeight - inventoryH - 10 - PANEL_H - 6;
   }

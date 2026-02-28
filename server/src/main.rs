@@ -507,6 +507,96 @@ async fn main() {
                         }
                     }
 
+                    // ── Crafting actions ─────────────────────────────────
+                    PlayerAction::CraftItem { recipe_id } => {
+                        debug_log_entries.push(format!("Crafted: {}", recipe_id));
+                    }
+                    PlayerAction::OpenChest { entity_id } => {
+                        use rand::Rng;
+                        let target = hecs::Entity::from_bits(*entity_id);
+                        if let Some(target) = target {
+                            if world.contains(target) {
+                                let _ = world.despawn(target);
+                                let mut rng = rand::thread_rng();
+
+                                // Always: 5-15 tokens
+                                let token_reward = rng.gen_range(5..=15) as i64;
+                                game_state.economy.balance += token_reward;
+
+                                // 30% chance: random blueprint
+                                if rng.gen_range(0..100) < 30 {
+                                    let blueprints = [
+                                        "TodoApp", "Calculator", "LandingPage",
+                                        "WeatherDashboard", "ChatApp", "KanbanBoard",
+                                        "EcommerceStore", "AiImageGenerator", "ApiDashboard",
+                                        "Blockchain",
+                                    ];
+                                    let bp = blueprints[rng.gen_range(0..blueprints.len())];
+                                    let bp_type = format!("blueprint:{}", bp);
+                                    if !game_state.has_inventory_item(&bp_type, 1) {
+                                        game_state.add_inventory_item(&bp_type, 1);
+                                        debug_log_entries.push(format!("Found blueprint: {}!", bp));
+                                    }
+                                }
+
+                                // 1-3 random materials
+                                let materials = ["material:iron_powder", "material:wood", "material:metal_ring", "material:ore_coin", "material:liquid_gold", "material:mana"];
+                                let weights: [u32; 6] = [30, 30, 25, 15, 12, 8];
+                                let total_weight: u32 = weights.iter().sum();
+                                let mat_count = rng.gen_range(1..=3);
+
+                                for _ in 0..mat_count {
+                                    let mut roll = rng.gen_range(0..total_weight);
+                                    for (i, &w) in weights.iter().enumerate() {
+                                        if roll < w {
+                                            game_state.add_inventory_item(materials[i], 1);
+                                            break;
+                                        }
+                                        roll -= w;
+                                    }
+                                }
+
+                                debug_log_entries.push(format!("Chest opened! +{} tokens", token_reward));
+                            }
+                        }
+                    }
+                    PlayerAction::PurchaseUpgrade { upgrade_id } => {
+                        use its_time_to_build_server::game::upgrades::{UpgradeId, get_upgrade};
+                        let id = match upgrade_id.as_str() {
+                            "ExpandedContextWindow" => Some(UpgradeId::ExpandedContextWindow),
+                            "VerboseLogging" => Some(UpgradeId::VerboseLogging),
+                            "TokenCompression" => Some(UpgradeId::TokenCompression),
+                            "GitAccess" => Some(UpgradeId::GitAccess),
+                            "WebSearch" => Some(UpgradeId::WebSearch),
+                            "FileSystemAccess" => Some(UpgradeId::FileSystemAccess),
+                            "CrankAssignment" => Some(UpgradeId::CrankAssignment),
+                            "MultiAgentCoordination" => Some(UpgradeId::MultiAgentCoordination),
+                            "PersistentMemory" => Some(UpgradeId::PersistentMemory),
+                            "AutonomousScouting" => Some(UpgradeId::AutonomousScouting),
+                            "AgentSpawning" => Some(UpgradeId::AgentSpawning),
+                            "DistributedCompute" => Some(UpgradeId::DistributedCompute),
+                            "AlignmentProtocols" => Some(UpgradeId::AlignmentProtocols),
+                            _ => None,
+                        };
+                        if let Some(id) = id {
+                            match game_state.upgrades.purchase(id, &mut game_state.economy) {
+                                Ok(()) => {
+                                    let def = get_upgrade(id);
+                                    debug_log_entries.push(format!("Upgrade purchased: {}", def.name));
+                                }
+                                Err(reason) => {
+                                    debug_log_entries.push(format!("Upgrade failed: {}", reason));
+                                }
+                            }
+                        }
+                    }
+                    PlayerAction::AddInventoryItem { item_type, count } => {
+                        game_state.add_inventory_item(item_type, *count);
+                    }
+                    PlayerAction::RemoveInventoryItem { item_type, count } => {
+                        game_state.remove_inventory_item(item_type, *count);
+                    }
+
                     _ => {}
                 }
             }
@@ -920,10 +1010,10 @@ async fn main() {
                 tier: crank_tier_to_string(&game_state.crank.tier),
                 tokens_per_rotation: game_state.crank.tokens_per_rotation,
                 agent_bonus_per_tick: match game_state.crank.tier {
-                    CrankTier::HandCrank => 0.05,
-                    CrankTier::GearAssembly => 0.08,
-                    CrankTier::WaterWheel => 0.10,
-                    CrankTier::RunicEngine => 0.15,
+                    CrankTier::HandCrank => 0.001,
+                    CrankTier::GearAssembly => 0.0016,
+                    CrankTier::WaterWheel => 0.002,
+                    CrankTier::RunicEngine => 0.003,
                 },
                 heat: game_state.crank.heat,
                 max_heat: game_state.crank.max_heat,
@@ -943,6 +1033,10 @@ async fn main() {
             },
             player_hit: combat_result.player_damaged,
             player_hit_damage: combat_result.player_hit_damage,
+            inventory: game_state.inventory.clone(),
+            purchased_upgrades: game_state.upgrades.purchased.iter()
+                .map(|id| format!("{:?}", id))
+                .collect(),
             project_manager: Some(ProjectManagerState {
                 base_dir: project_manager.base_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
                 initialized: project_manager.initialized,
