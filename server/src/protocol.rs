@@ -24,6 +24,8 @@ pub struct PlayerSnapshot {
     pub tokens: i64,
     pub torch_range: f32,
     pub facing: Vec2,
+    pub dead: bool,
+    pub death_timer: f32,
 }
 
 // ── Entities ───────────────────────────────────────────────────────

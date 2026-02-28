@@ -150,6 +150,8 @@ pub fn create_world() -> (World, GameState) {
         upgrades: UpgradeState::new(),
         spawning_enabled: true,
         god_mode: false,
+        player_dead: false,
+        death_tick: None,
     };
 
     (world, game_state)

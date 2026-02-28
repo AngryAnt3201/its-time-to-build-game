@@ -313,6 +313,8 @@ pub struct GameState {
     pub upgrades: UpgradeState,
     pub spawning_enabled: bool,
     pub god_mode: bool,
+    pub player_dead: bool,
+    pub death_tick: Option<u64>,
 }
 
 // ── Discovery Component ─────────────────────────────────────────────

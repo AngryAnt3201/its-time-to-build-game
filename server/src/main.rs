@@ -112,6 +112,11 @@ async fn main() {
 
         // ── 1. Process player input (movement + actions) ─────────────
         while let Ok(input) = server.input_rx.try_recv() {
+            // Skip all input processing while dead
+            if game_state.player_dead {
+                continue;
+            }
+
             // Movement with collision
             let mx = input.movement.x;
             let my = input.movement.y;
@@ -550,6 +555,32 @@ async fn main() {
         // ── 4b. Projectile system ──────────────────────────────────
         let projectile_result = projectile::projectile_system(&mut world);
 
+        // ── Check for player death ──────────────────────────────────
+        if !game_state.player_dead {
+            for (_id, health) in world.query::<&Health>().with::<&Player>().iter() {
+                if health.current <= 0 {
+                    game_state.player_dead = true;
+                    game_state.death_tick = Some(game_state.tick);
+                }
+            }
+        }
+
+        // ── Handle respawn after 200 ticks (10 seconds) ──────────────
+        if game_state.player_dead {
+            if let Some(death_tick) = game_state.death_tick {
+                let elapsed = game_state.tick - death_tick;
+                if elapsed >= 200 {
+                    game_state.player_dead = false;
+                    game_state.death_tick = None;
+                    for (_id, (pos, health)) in world.query_mut::<hecs::With<(&mut Position, &mut Health), &Player>>() {
+                        pos.x = 400.0;
+                        pos.y = 300.0;
+                        health.current = health.max;
+                    }
+                }
+            }
+        }
+
         // Collect entity IDs of killed rogues before they were despawned
         let mut entities_removed: Vec<EntityId> = combat_result
             .killed_rogues
@@ -831,6 +862,8 @@ async fn main() {
             tokens: game_state.economy.balance,
             torch_range: 0.0,
             facing: Vec2::default(),
+            dead: false,
+            death_timer: 0.0,
         };
 
         for (_id, (pos, health, torch, facing)) in world
@@ -842,6 +875,15 @@ async fn main() {
             player_snapshot.torch_range = torch.radius;
             player_snapshot.facing = Vec2 { x: facing.dx, y: facing.dy };
         }
+
+        player_snapshot.dead = game_state.player_dead;
+        player_snapshot.death_timer = if let Some(dt) = game_state.death_tick {
+            let elapsed = game_state.tick - dt;
+            let remaining = 200u64.saturating_sub(elapsed);
+            remaining as f32 / 20.0
+        } else {
+            0.0
+        };
 
         // ── Collect audio triggers ───────────────────────────────────
         let audio_triggers = {

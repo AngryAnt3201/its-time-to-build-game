@@ -19,6 +19,8 @@ export interface PlayerSnapshot {
   tokens: number;
   torch_range: number;
   facing: Vec2;
+  dead: boolean;
+  death_timer: number;
 }
 
 // ── Entities ───────────────────────────────────────────────────────

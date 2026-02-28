@@ -19,6 +19,7 @@ import { BuildingPanel } from './ui/building-panel';
 import { Minimap } from './ui/minimap';
 import { HotbarTooltip } from './ui/hotbar-tooltip';
 import { BuildingToolbar } from './ui/building-toolbar';
+import { DeathScreen } from './ui/death-screen';
 import { TerminalOverlay } from './ui/terminal-overlay';
 import { AgentWorldTooltip, type AgentWorldData } from './ui/agent-world-tooltip';
 import { ALL_BUILDINGS, TIER_NAMES, buildingTypeToId as buildingIdFromType } from './data/buildings';
@@ -48,6 +49,37 @@ function buildingTypeToId(type: string): string {
 /** Convert PascalCase building type to Title Case display name. */
 function buildingTypeToName(type: string): string {
   return type.replace(/([A-Z])/g, ' $1').trim();
+}
+
+/** Check if any building matching `buildingId` is within range of a completed Pylon. */
+function isBuildingNearPylon(buildingId: string, entityMap: Map<number, EntityDelta>): boolean {
+  const pylons: { x: number; y: number }[] = [];
+  const targets: { x: number; y: number }[] = [];
+
+  for (const entity of entityMap.values()) {
+    if (entity.kind !== 'Building') continue;
+    const data = (entity.data as { Building?: { building_type: string; construction_pct: number } }).Building;
+    if (!data || data.construction_pct < 1.0) continue;
+    if (data.building_type === 'Pylon') {
+      pylons.push(entity.position);
+    }
+    const entityBuildingId = buildingIdFromType(data.building_type);
+    if (entityBuildingId === buildingId) {
+      targets.push(entity.position);
+    }
+  }
+
+  if (targets.length === 0 || pylons.length === 0) return false;
+
+  const PYLON_RANGE = 200;
+  for (const target of targets) {
+    for (const pylon of pylons) {
+      const dx = target.x - pylon.x;
+      const dy = target.y - pylon.y;
+      if (dx * dx + dy * dy <= PYLON_RANGE * PYLON_RANGE) return true;
+    }
+  }
+  return false;
 }
 
 async function startGame() {
@@ -159,6 +191,7 @@ async function startGame() {
         target: null,
       });
     },
+    checkPylonProximity: (buildingId) => isBuildingNearPylon(buildingId, entityMap),
   });
 
   const agentWorldTooltip = new AgentWorldTooltip({
@@ -230,6 +263,9 @@ async function startGame() {
   uiContainer.addChild(equipmentHud.tooltipContainer); // tooltip on top of all UI
   uiContainer.addChild(agentsHud.tooltipContainer);    // agent tooltip on top of all UI
 
+  const deathScreen = new DeathScreen();
+  uiContainer.addChild(deathScreen.container);
+
   // ── Add to stage in z-order ─────────────────────────────────────
   app.stage.addChild(worldContainer);
   app.stage.addChild(uiContainer);
@@ -277,6 +313,7 @@ async function startGame() {
     // Wait for project initialization before revealing the game
     if (!initComplete && state.project_manager?.initialized) {
       initComplete = true;
+      root.unmount();
       uiRoot.style.display = 'none';
       console.log('[client] Project initialization confirmed — starting game');
     }
@@ -877,7 +914,7 @@ async function startGame() {
     clientTickRef = clientTick;
 
     // Block movement and actions while any overlay is open
-    const menuBlocking = buildMenu.visible || upgradeTree.visible || grimoire.visible || debugPanel.visible || minimap.expanded || buildingPanel.visible;
+    const menuBlocking = buildMenu.visible || upgradeTree.visible || grimoire.visible || debugPanel.visible || minimap.expanded || buildingPanel.visible || deathScreen.isActive;
 
     // Build movement vector from pressed keys
     const movement = { x: 0, y: 0 };
@@ -1116,6 +1153,18 @@ async function startGame() {
         if (menuBlocking) {
           buildingToolbar.hide();
           toolbarBuildingEntityId = null;
+        }
+      }
+
+      // Death screen
+      if (state.player.dead) {
+        if (!deathScreen.isActive) {
+          deathScreen.show();
+        }
+        deathScreen.update(state.player.death_timer, window.innerWidth, window.innerHeight);
+      } else {
+        if (deathScreen.isActive) {
+          deathScreen.hide();
         }
       }
 
