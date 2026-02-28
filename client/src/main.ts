@@ -6,6 +6,8 @@ import { LightingRenderer } from './renderer/lighting';
 import { HUD } from './ui/hud';
 import { LogFeed } from './ui/log-feed';
 import { BuildMenu } from './ui/build-menu';
+import { UpgradeTree } from './ui/upgrade-tree';
+import { Grimoire } from './ui/grimoire';
 import type { GameStateUpdate, PlayerInput, PlayerAction } from './network/protocol';
 import { AudioManager } from './audio/manager';
 
@@ -30,6 +32,8 @@ async function init() {
   const hud = new HUD();
   const logFeed = new LogFeed(screenWidth, screenHeight);
   const buildMenu = new BuildMenu();
+  const upgradeTree = new UpgradeTree();
+  const grimoire = new Grimoire();
 
   // ── Audio system ──────────────────────────────────────────────────
   const audioManager = new AudioManager();
@@ -77,6 +81,8 @@ async function init() {
   uiContainer.addChild(hud.container);
   uiContainer.addChild(logFeed.container);
   uiContainer.addChild(buildMenu.container);
+  uiContainer.addChild(upgradeTree.container);
+  uiContainer.addChild(grimoire.container);
 
   // ── Add to stage in z-order ─────────────────────────────────────
   app.stage.addChild(worldContainer);
@@ -84,8 +90,10 @@ async function init() {
 
   console.log('[client] PixiJS initialized with all renderers');
 
-  // ── Initial layout for build menu ─────────────────────────────────
+  // ── Initial layout for build menu, upgrade tree, and grimoire ──────
   buildMenu.resize(screenWidth, screenHeight);
+  upgradeTree.resize(screenWidth, screenHeight);
+  grimoire.resize(screenWidth, screenHeight);
 
   // ── Handle window resize ────────────────────────────────────────
   window.addEventListener('resize', () => {
@@ -94,6 +102,8 @@ async function init() {
     lightingRenderer.resize(w, h);
     logFeed.resize(w, h);
     buildMenu.resize(w, h);
+    upgradeTree.resize(w, h);
+    grimoire.resize(w, h);
   });
 
   // ── Network connection ──────────────────────────────────────────
@@ -166,6 +176,56 @@ async function init() {
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     const key = e.key.toLowerCase();
 
+    // ── Grimoire key handling (intercept before other menus) ──────
+    if (key === 'g' && !buildMenu.visible && !upgradeTree.visible) {
+      grimoire.toggle();
+      return;
+    }
+
+    if (grimoire.visible) {
+      if (key === 'arrowup' || key === 'w') {
+        grimoire.scrollPrev();
+        return;
+      }
+      if (key === 'arrowdown' || key === 's') {
+        grimoire.scrollNext();
+        return;
+      }
+      if (key === 'escape' || key === 'g') {
+        grimoire.close();
+        return;
+      }
+      // Swallow all other keys while grimoire is open
+      return;
+    }
+
+    // ── Upgrade tree key handling (intercept before normal input) ──
+    if (key === 'u' && !buildMenu.visible) {
+      upgradeTree.toggle();
+      return;
+    }
+
+    if (upgradeTree.visible) {
+      if (key === 'arrowup' || key === 'w') {
+        upgradeTree.selectPrev();
+        return;
+      }
+      if (key === 'arrowdown' || key === 's') {
+        upgradeTree.selectNext();
+        return;
+      }
+      if (key === 'enter') {
+        upgradeTree.confirmSelection();
+        return;
+      }
+      if (key === 'escape') {
+        upgradeTree.close();
+        return;
+      }
+      // Swallow all other keys while upgrade tree is open
+      return;
+    }
+
     // ── Build menu key handling (intercept before normal input) ───
     if (key === 'b') {
       buildMenu.toggle();
@@ -216,8 +276,8 @@ async function init() {
   app.ticker.add(() => {
     clientTick++;
 
-    // Block movement and actions while build menu is open
-    const menuBlocking = buildMenu.visible;
+    // Block movement and actions while any overlay is open
+    const menuBlocking = buildMenu.visible || upgradeTree.visible || grimoire.visible;
 
     // Build movement vector from pressed keys
     const movement = { x: 0, y: 0 };
@@ -279,6 +339,9 @@ async function init() {
 
       // Update entity renderer with changed/removed entities
       entityRenderer.update(state.entities_changed, state.entities_removed);
+
+      // Update grimoire with agent data from entity deltas
+      grimoire.update(state.entities_changed);
 
       // Update HUD with player snapshot and economy
       hud.update(state.player, state.economy);

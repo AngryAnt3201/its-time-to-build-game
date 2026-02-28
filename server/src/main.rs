@@ -81,7 +81,7 @@ async fn main() {
         rogue_ai::rogue_ai_system(&mut world);
 
         // ── 3. Spawn system ──────────────────────────────────────────
-        spawn::spawn_system(&mut world, &game_state, player_x, player_y);
+        let spawn_result = spawn::spawn_system(&mut world, &mut game_state, player_x, player_y);
 
         // ── 4. Combat system ─────────────────────────────────────────
         let combat_result = combat::combat_system(&mut world, &mut game_state, player_attacking);
@@ -127,6 +127,14 @@ async fn main() {
                 tick: game_state.tick,
                 text: text.clone(),
                 category: LogCategory::Economy,
+            });
+        }
+
+        for text in &spawn_result.log_entries {
+            log_entries.push(LogEntry {
+                tick: game_state.tick,
+                text: text.clone(),
+                category: LogCategory::System,
             });
         }
 
