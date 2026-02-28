@@ -37,6 +37,34 @@ const instructionStyle = new TextStyle({
   fill: 0x555555,
 });
 
+const lockedNameStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 14,
+  fill: 0x555555, // dark grey
+});
+
+const lockedCostStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 12,
+  fill: 0x444444,
+});
+
+const lockedDescStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 11,
+  fontStyle: 'italic',
+  fill: 0x444444,
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/** Convert PascalCase building type to snake_case ID (e.g. "TodoApp" -> "todo_app"). */
+function buildingTypeToId(type: string): string {
+  return type.replace(/([A-Z])/g, (match, p1, offset) =>
+    offset > 0 ? '_' + p1.toLowerCase() : p1.toLowerCase()
+  );
+}
+
 // ── Building data ────────────────────────────────────────────────────
 
 export interface BuildingEntry {
@@ -133,6 +161,7 @@ export class BuildMenu {
   private selectedIndex = 0;
   private scrollOffset = 0;
   private buildings: BuildingEntry[] = TIER1_BUILDINGS;
+  private unlockedBuildings: Set<string> = new Set();
 
   // Panel elements
   private panel: Graphics;
@@ -182,6 +211,12 @@ export class BuildMenu {
   }
 
   // ── Public API ──────────────────────────────────────────────────
+
+  /** Update which buildings are unlocked (called when server sends state). */
+  setUnlockedBuildings(ids: string[]): void {
+    this.unlockedBuildings = new Set(ids);
+    this.rebuildRows();
+  }
 
   /** Toggle the menu open/closed. */
   toggle(): void {
@@ -240,6 +275,12 @@ export class BuildMenu {
     if (!this.visible) return;
     const building = this.buildings[this.selectedIndex];
     if (!building) return;
+
+    // Prevent placement of locked buildings
+    const buildingId = buildingTypeToId(building.type);
+    if (this.unlockedBuildings.size > 0 && !this.unlockedBuildings.has(buildingId)) {
+      return; // Can't place locked buildings
+    }
 
     this.placementBuilding = building;
     this.placementMode = true;
@@ -317,6 +358,11 @@ export class BuildMenu {
       const row = new Container();
       row.label = `build-row-${i}`;
 
+      // Determine lock state
+      const buildingId = buildingTypeToId(building.type);
+      const isLocked =
+        this.unlockedBuildings.size > 0 && !this.unlockedBuildings.has(buildingId);
+
       // Row background (for highlighting)
       const bg = new Graphics();
       bg.label = 'row-bg';
@@ -325,19 +371,29 @@ export class BuildMenu {
       row.addChild(bg);
 
       // Building name
-      const name = new Text({ text: building.name, style: nameStyle });
+      const displayName = isLocked ? `${building.name} [LOCKED]` : building.name;
+      const name = new Text({
+        text: displayName,
+        style: isLocked ? lockedNameStyle : nameStyle,
+      });
       name.x = 8;
       name.y = 4;
       row.addChild(name);
 
       // Cost
-      const cost = new Text({ text: `${building.cost} tokens`, style: costStyle });
+      const cost = new Text({
+        text: `${building.cost} tokens`,
+        style: isLocked ? lockedCostStyle : costStyle,
+      });
       cost.x = PANEL_WIDTH - 120;
       cost.y = 6;
       row.addChild(cost);
 
       // Description
-      const desc = new Text({ text: building.description, style: descStyle });
+      const desc = new Text({
+        text: building.description,
+        style: isLocked ? lockedDescStyle : descStyle,
+      });
       desc.x = 8;
       desc.y = 24;
       row.addChild(desc);
@@ -352,6 +408,14 @@ export class BuildMenu {
     this.highlightSelected();
   }
 
+  /** Check if a building at a given index is locked. */
+  private isBuildingLocked(index: number): boolean {
+    if (this.unlockedBuildings.size === 0) return false;
+    const building = this.buildings[index];
+    if (!building) return false;
+    return !this.unlockedBuildings.has(buildingTypeToId(building.type));
+  }
+
   private highlightSelected(): void {
     for (let i = 0; i < this.rowContainers.length; i++) {
       const row = this.rowContainers[i];
@@ -360,10 +424,15 @@ export class BuildMenu {
 
       bg.clear();
       if (i === this.selectedIndex) {
+        const locked = this.isBuildingLocked(i);
         bg.rect(0, 0, PANEL_WIDTH - 16, ROW_HEIGHT - 4);
-        bg.fill({ color: 0x2a2010, alpha: 0.6 });
+        bg.fill({ color: locked ? 0x1a1010 : 0x2a2010, alpha: 0.6 });
         bg.rect(0, 0, PANEL_WIDTH - 16, ROW_HEIGHT - 4);
-        bg.stroke({ color: 0xd4a017, alpha: 0.8, width: 1 });
+        bg.stroke({
+          color: locked ? 0x552222 : 0xd4a017,
+          alpha: 0.8,
+          width: 1,
+        });
       } else {
         bg.rect(0, 0, PANEL_WIDTH - 16, ROW_HEIGHT - 4);
         bg.fill({ color: 0x2a2010, alpha: 0 });
