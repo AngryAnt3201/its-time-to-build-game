@@ -1,72 +1,364 @@
-/* ── Title Screen ─────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════
+   NECROMANTIC TERMINAL — Title Screen
+   Dark fantasy pixel art + CLI terminal aesthetic
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Palette ───────────────────────────────────────────── */
 
 .title-screen {
+  --cyan: #4ecdc4;
+  --cyan-bright: #7eeee6;
+  --cyan-dim: rgba(78, 205, 196, 0.4);
+  --cyan-glow: rgba(78, 205, 196, 0.15);
+  --cyan-ghost: rgba(78, 205, 196, 0.06);
+  --green: #5cb85c;
+  --green-dim: rgba(76, 175, 80, 0.4);
+  --amber: #d4a017;
+  --amber-dim: rgba(212, 160, 23, 0.35);
+  --dark: #0a0a0a;
+  --panel: #0d1117;
+  --panel-border: #1a2332;
+  --text-muted: #4a5568;
+
   position: fixed;
   inset: 0;
   z-index: 1000;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dark);
+  font-family: 'IBM Plex Mono', monospace;
+  overflow: hidden;
+}
+
+/* ── Background image ──────────────────────────────────── */
+
+.title-bg {
+  position: absolute;
+  inset: -24px;
+  background-size: cover;
+  background-position: center 40%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  z-index: 0;
+  filter: brightness(0.55) saturate(1.3);
+  animation: bgDrift 25s ease-in-out infinite alternate;
+}
+
+@keyframes bgDrift {
+  0%   { transform: scale(1.0) translate(0, 0); }
+  100% { transform: scale(1.06) translate(-8px, -4px); }
+}
+
+/* ── Vignette ──────────────────────────────────────────── */
+
+.title-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 65% 55% at 50% 45%,
+      transparent 0%,
+      rgba(0, 0, 0, 0.25) 45%,
+      rgba(0, 0, 0, 0.75) 80%,
+      rgba(0, 0, 0, 0.92) 100%
+    );
+}
+
+/* ── Scanlines ─────────────────────────────────────────── */
+
+.title-scanlines {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 0, 0, 0.06) 3px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  opacity: 0.5;
+  animation: scanPulse 6s ease-in-out infinite;
+}
+
+@keyframes scanPulse {
+  0%, 100% { opacity: 0.5; }
+  40%      { opacity: 0.65; }
+  80%      { opacity: 0.4; }
+}
+
+/* CRT flicker — very subtle full-screen */
+.title-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: transparent;
+  animation: crtFlicker 0.15s infinite;
+  opacity: 0.015;
+}
+
+@keyframes crtFlicker {
+  0%   { background: rgba(78, 205, 196, 0.6); }
+  50%  { background: transparent; }
+  100% { background: rgba(78, 205, 196, 0.3); }
+}
+
+/* ── Content layer ─────────────────────────────────────── */
+
+.title-content {
+  position: relative;
+  z-index: 4;
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #0a0a0a;
-  font-family: 'IBM Plex Mono', monospace;
-  image-rendering: pixelated;
+  text-align: center;
+  padding: 40px;
 }
 
-/* ── Title typography ────────────────────────────────────── */
+/* ── Staggered entrance animations ─────────────────────── */
 
-.title-screen h1 {
-  font-size: 3.5rem;
-  color: #d4a017;
-  letter-spacing: 0.35em;
+.title-text-group,
+.play-btn,
+.version-tag {
+  opacity: 0;
+  transform: translateY(18px);
+}
+
+.title-screen.loaded .title-text-group {
+  animation: fadeInUp 1s ease forwards;
+  animation-delay: 0.15s;
+}
+
+.title-screen.loaded .play-btn {
+  animation: fadeInUp 0.8s ease forwards;
+  animation-delay: 0.7s;
+}
+
+.title-screen.loaded .version-tag {
+  animation: fadeInUp 0.7s ease forwards;
+  animation-delay: 1.1s;
+}
+
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Title text group ──────────────────────────────────── */
+
+.title-text-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Main title — glitch + glow ────────────────────────── */
+
+.title-glitch {
+  font-size: clamp(1.8rem, 5vw, 3.8rem);
+  font-weight: 700;
+  color: #f0f0f0;
+  letter-spacing: 0.18em;
   text-align: center;
   margin: 0;
-  text-shadow:
-    0 0 10px rgba(212, 160, 23, 0.4),
-    0 0 30px rgba(212, 160, 23, 0.15);
   text-transform: uppercase;
-  line-height: 1.2;
+  line-height: 1.15;
+  position: relative;
+  text-shadow:
+    0 0 8px var(--cyan-dim),
+    0 0 30px var(--cyan-glow),
+    0 0 60px var(--cyan-ghost);
+  animation: titleBreath 4.5s ease-in-out infinite;
 }
 
-.title-screen .subtitle {
-  font-size: 1.2rem;
-  color: rgba(212, 160, 23, 0.55);
-  letter-spacing: 0.6em;
+/* Glitch: cyan channel — clips top half */
+.title-glitch::before {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  color: var(--cyan);
+  z-index: -1;
+  clip-path: inset(0 0 55% 0);
+  opacity: 0;
+  animation: glitchA 6s ease-in-out infinite;
+}
+
+/* Glitch: amber channel — clips bottom half */
+.title-glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  color: var(--amber);
+  z-index: -1;
+  clip-path: inset(55% 0 0 0);
+  opacity: 0;
+  animation: glitchB 6s ease-in-out infinite;
+  animation-delay: 0.4s;
+}
+
+@keyframes titleBreath {
+  0%, 100% {
+    text-shadow:
+      0 0 8px var(--cyan-dim),
+      0 0 30px var(--cyan-glow);
+  }
+  50% {
+    text-shadow:
+      0 0 12px var(--cyan-dim),
+      0 0 50px var(--cyan-glow),
+      0 0 90px var(--cyan-ghost);
+  }
+}
+
+@keyframes glitchA {
+  0%, 89%, 100%  { opacity: 0; transform: translateX(0); }
+  90%            { opacity: 0.6; transform: translateX(-4px) skewX(-0.5deg); }
+  92%            { opacity: 0.5; transform: translateX(3px) skewX(0.3deg); }
+  93%            { opacity: 0.4; transform: translateX(-1px); }
+  94%            { opacity: 0; transform: translateX(0); }
+}
+
+@keyframes glitchB {
+  0%, 85%, 100%  { opacity: 0; transform: translateX(0); }
+  86%            { opacity: 0.45; transform: translateX(3px) skewX(0.4deg); }
+  88%            { opacity: 0.4; transform: translateX(-4px) skewX(-0.3deg); }
+  89%            { opacity: 0.3; transform: translateX(2px); }
+  90%            { opacity: 0; transform: translateX(0); }
+}
+
+/* ── Divider rule — energy beam ────────────────────────── */
+
+.title-rule {
+  height: 1px;
+  width: 180px;
+  margin: 22px 0 18px;
+  border: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--cyan-dim) 20%,
+    var(--cyan) 50%,
+    var(--cyan-dim) 80%,
+    transparent 100%
+  );
+  animation: ruleBreath 3.5s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--cyan-glow);
+}
+
+@keyframes ruleBreath {
+  0%, 100% { opacity: 0.5; width: 180px; }
+  50%      { opacity: 1; width: 230px; }
+}
+
+/* ── Subtitle ──────────────────────────────────────────── */
+
+.subtitle {
+  font-size: clamp(0.7rem, 1.5vw, 1rem);
+  color: var(--cyan);
+  letter-spacing: 0.75em;
   text-align: center;
-  margin-top: 12px;
+  margin: 0;
   text-transform: uppercase;
   font-weight: 400;
+  opacity: 0.6;
+  text-shadow: 0 0 6px var(--cyan-glow);
 }
 
-/* ── Play button ─────────────────────────────────────────── */
+/* ── Play button ───────────────────────────────────────── */
 
 .play-btn {
-  margin-top: 56px;
-  padding: 16px 64px;
-  background: #1a1510;
-  border: 2px solid #d4a017;
-  color: #d4a017;
+  margin-top: 52px;
+  padding: 14px 52px;
+  background: rgba(13, 17, 23, 0.75);
+  border: 1px solid var(--cyan-dim);
+  color: var(--cyan);
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 1.2rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.35em;
   text-transform: uppercase;
   cursor: pointer;
-  border-radius: 2px;
-  transition: background 0.15s ease;
+  border-radius: 1px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+
+.play-btn-text {
+  position: relative;
+  z-index: 1;
+}
+
+.play-btn-glow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 30%,
+    var(--cyan-ghost) 50%,
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .play-btn:hover {
-  background: #2a2218;
+  border-color: var(--cyan);
+  box-shadow:
+    0 0 16px var(--cyan-glow),
+    inset 0 0 16px var(--cyan-ghost);
+  color: var(--cyan-bright);
+}
+
+.play-btn:hover .play-btn-glow {
+  opacity: 1;
 }
 
 .play-btn:active {
-  background: #0e0c08;
-  border-color: #b8890f;
   transform: translateY(1px);
+  box-shadow: 0 0 8px var(--cyan-glow);
 }
 
-/* ── Settings gear ───────────────────────────────────────── */
+/* Idle pulse ring */
+.play-btn::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 1px solid var(--cyan);
+  border-radius: 1px;
+  opacity: 0;
+  animation: btnRing 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes btnRing {
+  0%, 100% { opacity: 0; transform: scale(1); }
+  50%      { opacity: 0.2; transform: scale(1.04); }
+}
+
+/* ── Version tag ───────────────────────────────────────── */
+
+.version-tag {
+  margin-top: 36px;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  letter-spacing: 0.12em;
+}
+
+/* ── Settings gear ─────────────────────────────────────── */
 
 .settings-gear {
   position: fixed;
@@ -74,20 +366,30 @@
   right: 24px;
   background: transparent;
   border: none;
-  color: #d4a017;
-  font-size: 1.5rem;
+  color: var(--cyan);
+  font-size: 1.4rem;
   cursor: pointer;
-  padding: 4px;
+  padding: 8px;
   line-height: 1;
-  transition: text-shadow 0.15s ease;
   z-index: 1001;
+  opacity: 0;
+  transition: opacity 0.3s ease, text-shadow 0.2s ease, transform 0.3s ease;
+}
+
+.title-screen.loaded .settings-gear {
+  opacity: 0.45;
+  transition-delay: 1.6s, 0s, 0s;
 }
 
 .settings-gear:hover {
-  text-shadow: 0 0 8px rgba(212, 160, 23, 0.6);
+  opacity: 1 !important;
+  text-shadow: 0 0 12px var(--cyan-dim);
+  transform: rotate(45deg);
 }
 
-/* ── Modal backdrop ──────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS MODAL
+   ═══════════════════════════════════════════════════════════ */
 
 .modal-backdrop {
   position: fixed;
@@ -96,63 +398,85 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
-
-/* ── Modal panel ─────────────────────────────────────────── */
 
 .modal-panel {
   position: relative;
-  background: #1a1510;
-  border: 2px solid #3a3020;
-  padding: 32px 28px 28px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  padding: 36px 28px 28px;
   max-width: 420px;
   width: 90%;
   font-family: 'IBM Plex Mono', monospace;
   border-radius: 2px;
+  box-shadow:
+    0 0 40px rgba(78, 205, 196, 0.04),
+    0 4px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Subtle top accent line on modal */
+.modal-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 24px;
+  right: 24px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--cyan-dim),
+    transparent
+  );
 }
 
 .modal-title {
-  color: #d4a017;
+  color: var(--cyan);
   text-align: center;
-  margin: 0 0 24px;
-  font-size: 1.1rem;
+  margin: 0 0 28px;
+  font-size: 0.85rem;
   font-weight: 600;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.25em;
   text-transform: uppercase;
 }
 
 .modal-close {
   position: absolute;
-  top: 10px;
-  right: 12px;
+  top: 12px;
+  right: 14px;
   background: transparent;
   border: none;
-  color: #888;
-  font-size: 1.2rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
   cursor: pointer;
   padding: 4px 8px;
   line-height: 1;
   font-family: 'IBM Plex Mono', monospace;
+  transition: color 0.2s ease;
 }
 
 .modal-close:hover {
-  color: #d4a017;
+  color: var(--cyan);
 }
 
-/* ── Input groups ────────────────────────────────────────── */
+/* ── Input groups ──────────────────────────────────────── */
 
 .input-group {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 .input-group label {
   display: block;
-  color: #d4a017;
-  font-size: 0.85rem;
-  margin-bottom: 4px;
-  letter-spacing: 0.05em;
+  color: var(--cyan);
+  font-size: 0.7rem;
+  margin-bottom: 8px;
+  letter-spacing: 0.12em;
   font-family: 'IBM Plex Mono', monospace;
+  text-transform: uppercase;
+  opacity: 0.75;
 }
 
 .input-wrapper {
@@ -161,25 +485,26 @@
 
 .input-group input {
   width: 100%;
-  background: #0a0a0a;
-  border: 1px solid #3a3020;
-  color: #d4a017;
-  padding: 8px 12px;
-  padding-right: 52px;
+  background: rgba(10, 10, 10, 0.8);
+  border: 1px solid var(--panel-border);
+  color: #c8d6e5;
+  padding: 10px 14px;
+  padding-right: 56px;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   border-radius: 2px;
   box-sizing: border-box;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .input-group input:focus {
-  border-color: #d4a017;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px var(--cyan-ghost), 0 0 12px var(--cyan-ghost);
 }
 
 .input-group input::placeholder {
-  color: #555;
+  color: #2a3544;
 }
 
 .toggle-visibility {
@@ -189,42 +514,45 @@
   transform: translateY(-50%);
   background: transparent;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: 0.6rem;
   font-family: 'IBM Plex Mono', monospace;
-  padding: 2px 4px;
+  padding: 2px 6px;
+  letter-spacing: 0.06em;
+  transition: color 0.2s ease;
 }
 
 .toggle-visibility:hover {
-  color: #d4a017;
+  color: var(--cyan);
 }
 
-/* ── Save button ─────────────────────────────────────────── */
+/* ── Save button ───────────────────────────────────────── */
 
 .save-btn {
   width: 100%;
-  margin-top: 8px;
-  padding: 10px 24px;
-  background: #1a1510;
-  border: 2px solid #d4a017;
-  color: #d4a017;
+  margin-top: 10px;
+  padding: 11px 24px;
+  background: var(--cyan-ghost);
+  border: 1px solid var(--cyan-dim);
+  color: var(--cyan);
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.95rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.25em;
   text-transform: uppercase;
   cursor: pointer;
   border-radius: 2px;
-  transition: background 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .save-btn:hover {
-  background: #2a2218;
+  background: rgba(78, 205, 196, 0.12);
+  border-color: var(--cyan);
+  box-shadow: 0 0 16px var(--cyan-ghost);
 }
 
 .save-btn:active {
-  background: #0e0c08;
-  border-color: #b8890f;
   transform: translateY(1px);
+  box-shadow: none;
 }
