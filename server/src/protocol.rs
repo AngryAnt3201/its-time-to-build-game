@@ -236,6 +236,14 @@ pub struct ProjectManagerState {
     pub unlocked_buildings: Vec<String>,
     pub building_statuses: HashMap<String, String>, // building_id -> status string
     pub agent_assignments: HashMap<String, Vec<u64>>, // building_id -> agent entity ids
+    pub building_grades: HashMap<String, BuildingGradeState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildingGradeState {
+    pub stars: u8,
+    pub reasoning: String,
+    pub grading: bool,
 }
 
 // ── Combat events (for client VFX) ────────────────────────────────
@@ -351,6 +359,10 @@ pub enum PlayerAction {
     // Vibe session actions
     VibeInput { agent_id: u64, data: String },
     SetMistralApiKey { key: String },
+
+    // Grading actions
+    GradeBuilding { building_id: String },
+    SetAnthropicApiKey { key: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -383,4 +395,6 @@ pub enum ServerMessage {
     VibeSessionStarted { agent_id: u64 },
     /// Vibe session ended.
     VibeSessionEnded { agent_id: u64, reason: String },
+    /// Grade result from LLM evaluation.
+    GradeResult { building_id: String, stars: u8, reasoning: String },
 }

@@ -3,6 +3,8 @@ use hecs::World;
 use crate::ecs::components::{
     Agent, AgentState, AgentTier, Building, BuildingType, ConstructionProgress, GameState,
 };
+use crate::grading::GradingService;
+use crate::project::ProjectManager;
 use crate::protocol::{AgentStateKind, AgentTierKind, BuildingTypeKind};
 
 /// Runs the economy system for a single tick.
@@ -10,7 +12,7 @@ use crate::protocol::{AgentStateKind, AgentTierKind, BuildingTypeKind};
 /// Calculates total agent wages (expenditure) and building passive income,
 /// then updates `game_state.economy` with the computed values and applies
 /// the net change to the balance.
-pub fn economy_system(world: &World, game_state: &mut GameState) {
+pub fn economy_system(world: &World, game_state: &mut GameState, grading_service: &GradingService) {
     let mut total_wages: f64 = 0.0;
     let mut wage_sinks: Vec<(String, f64)> = Vec::new();
 
@@ -56,7 +58,7 @@ pub fn economy_system(world: &World, game_state: &mut GameState) {
             continue;
         }
 
-        let income = match building_type.kind {
+        let base_income = match building_type.kind {
             BuildingTypeKind::ComputeFarm => 0.5,
             BuildingTypeKind::TodoApp => 0.02,
             BuildingTypeKind::WeatherDashboard => 0.1,
@@ -66,9 +68,24 @@ pub fn economy_system(world: &World, game_state: &mut GameState) {
             _ => 0.0,
         };
 
-        if income > 0.0 {
+        if base_income > 0.0 {
+            // Look up grade multiplier for app buildings
+            let type_name = format!("{:?}", building_type.kind);
+            let building_id = ProjectManager::building_type_to_id(&type_name);
+            let multiplier = building_id
+                .as_deref()
+                .map(|id| grading_service.get_multiplier(id))
+                .unwrap_or(1.0);
+
+            let income = base_income * multiplier;
             total_income += income;
-            income_sources.push((format!("{:?}", building_type.kind), income));
+
+            let label = if multiplier != 1.0 {
+                format!("{:?} ({}x)", building_type.kind, multiplier)
+            } else {
+                format!("{:?}", building_type.kind)
+            };
+            income_sources.push((label, income));
         }
     }
 

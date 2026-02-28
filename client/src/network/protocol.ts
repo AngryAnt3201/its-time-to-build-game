@@ -191,12 +191,19 @@ export interface DebugSnapshot {
 
 // ── Project Management ──────────────────────────────────────────────
 
+export interface BuildingGradeState {
+  stars: number;
+  reasoning: string;
+  grading: boolean;
+}
+
 export interface ProjectManagerState {
   base_dir: string | null;
   initialized: boolean;
   unlocked_buildings: string[];
   building_statuses: Record<string, string>;
   agent_assignments: Record<string, number[]>;
+  building_grades: Record<string, BuildingGradeState>;
 }
 
 // ── Inventory ─────────────────────────────────────────────────────
@@ -264,7 +271,8 @@ export type ServerMessage =
   | { GameState: GameStateUpdate }
   | { VibeOutput: { agent_id: number; data: number[] } }
   | { VibeSessionStarted: { agent_id: number } }
-  | { VibeSessionEnded: { agent_id: number; reason: string } };
+  | { VibeSessionEnded: { agent_id: number; reason: string } }
+  | { GradeResult: { building_id: string; stars: number; reasoning: string } };
 
 // ── Client -> Server messages ──────────────────────────────────────
 
@@ -316,7 +324,9 @@ export type PlayerAction =
   | "DebugLockAllBuildings"
   | { UnlockBuilding: { building_id: string } }
   | { VibeInput: { agent_id: number; data: string } }
-  | { SetMistralApiKey: { key: string } };
+  | { SetMistralApiKey: { key: string } }
+  | { GradeBuilding: { building_id: string } }
+  | { SetAnthropicApiKey: { key: string } };
 
 export type TaskAssignment =
   | "Build"

@@ -8,6 +8,7 @@ use its_time_to_build_server::network::server::GameServer;
 use its_time_to_build_server::project;
 use its_time_to_build_server::protocol::*;
 use its_time_to_build_server::vibe::manager::VibeManager;
+use its_time_to_build_server::grading;
 use tokio::time::{interval, Duration};
 use tracing::info;
 
@@ -85,12 +86,17 @@ async fn main() {
     };
     let mut project_manager = project::ProjectManager::new(&manifest_path);
     let mut vibe_manager = VibeManager::new();
+    let mut grading_service = grading::GradingService::new();
 
     let mut ticker = interval(TICK_DURATION);
 
     // ── Per-tick player action tracking ──────────────────────────────
     let mut player_attacking: bool;
     let mut player_cranking: bool = false;
+
+    // Channel for receiving grade results from async tasks
+    let (grade_result_tx, mut grade_result_rx) =
+        tokio::sync::mpsc::unbounded_channel::<(String, u64, Result<(u8, String), String>)>();
 
     loop {
         ticker.tick().await;
@@ -519,6 +525,49 @@ async fn main() {
                         vibe_manager.set_api_key(key.clone());
                         debug_log_entries.push("[vibe] Mistral API key set".to_string());
                     }
+                    PlayerAction::SetAnthropicApiKey { key } => {
+                        grading_service.set_api_key(key.clone());
+                        debug_log_entries.push("[grading] Anthropic API key set".to_string());
+                    }
+                    PlayerAction::GradeBuilding { building_id } => {
+                        if !grading_service.has_api_key() {
+                            debug_log_entries.push("[grading] No Anthropic API key set".to_string());
+                        } else if grading_service.grades.get(building_id.as_str()).map_or(false, |g| g.grading) {
+                            debug_log_entries.push(format!("[grading] {} already being graded", building_id));
+                        } else {
+                            let base = project_manager.base_dir.as_ref();
+                            let building = project_manager.manifest.get_building(building_id);
+                            if let (Some(base), Some(building)) = (base, building) {
+                                let project_dir = base.join(&building.directory_name);
+                                match grading::read_project_sources(&project_dir) {
+                                    Ok(sources) if sources.is_empty() => {
+                                        debug_log_entries.push(format!("[grading] no source files found for {}", building_id));
+                                    }
+                                    Ok(sources) => {
+                                        grading_service.mark_grading(building_id);
+                                        let api_key = grading_service.api_key.as_ref().unwrap().clone();
+                                        let bid = building_id.clone();
+                                        let bname = building.name.clone();
+                                        let bdesc = building.description.clone();
+                                        let tick = game_state.tick;
+                                        let grade_tx = grade_result_tx.clone();
+                                        tokio::spawn(async move {
+                                            let result = grading::grade_with_claude(
+                                                &api_key, &bid, &bname, &bdesc, &sources,
+                                            ).await;
+                                            let _ = grade_tx.send((bid, tick, result));
+                                        });
+                                        debug_log_entries.push(format!("[grading] grading {} ...", building_id));
+                                    }
+                                    Err(e) => {
+                                        debug_log_entries.push(format!("[grading] failed to read sources: {}", e));
+                                    }
+                                }
+                            } else {
+                                debug_log_entries.push(format!("[grading] building {} not found or no base dir", building_id));
+                            }
+                        }
+                    }
                     PlayerAction::VibeInput { agent_id, data } => {
                         if let Err(e) = vibe_manager.send_input(*agent_id, data.as_bytes()) {
                             debug_log_entries.push(format!("[vibe] input error: {}", e));
@@ -549,7 +598,6 @@ async fn main() {
                             const CHEST_SEED: i32 = 55555;
                             const STEP: i32 = 8;
                             *wx % STEP == 0 && *wy % STEP == 0
-                                && collision::is_walkable(*wx, *wy)
                                 && (collision::chest_hash(*wx, *wy, CHEST_SEED) % 100) < 10
                         };
 
@@ -743,7 +791,7 @@ async fn main() {
 
         // ── 6. Economy system ────────────────────────────────────────
         // Called after all mutable systems are done so we can pass &World
-        economy::economy_system(&world, &mut game_state);
+        economy::economy_system(&world, &mut game_state, &grading_service);
 
         // ── 7. Crank system ──────────────────────────────────────────
         let agent_assigned = game_state.crank.assigned_agent
@@ -825,6 +873,32 @@ async fn main() {
                 agent_id,
                 reason: "Session completed".to_string(),
             });
+        }
+
+        // Poll for completed grading results
+        while let Ok((building_id, tick, result)) = grade_result_rx.try_recv() {
+            match result {
+                Ok((stars, reasoning)) => {
+                    grading_service.set_grade(&building_id, stars, reasoning.clone(), tick);
+                    debug_log_entries.push(format!(
+                        "[grading] {} rated {} star{}",
+                        building_id,
+                        stars,
+                        if stars == 1 { "" } else { "s" }
+                    ));
+                    server.send_message(&ServerMessage::GradeResult {
+                        building_id,
+                        stars,
+                        reasoning,
+                    });
+                }
+                Err(e) => {
+                    if let Some(grade) = grading_service.grades.get_mut(&building_id) {
+                        grade.grading = false;
+                    }
+                    debug_log_entries.push(format!("[grading] {} failed: {}", building_id, e));
+                }
+            }
         }
 
         // Kill vibe sessions for agents in Erroring state
@@ -1114,6 +1188,13 @@ async fn main() {
                     (k.clone(), status_str)
                 }).collect(),
                 agent_assignments: project_manager.agent_assignments.clone(),
+                building_grades: grading_service.grades.iter().map(|(k, v)| {
+                    (k.clone(), BuildingGradeState {
+                        stars: v.stars,
+                        reasoning: v.reasoning.clone(),
+                        grading: v.grading,
+                    })
+                }).collect(),
             }),
             opened_chests: game_state.opened_chests.iter().copied().collect(),
             chest_rewards,

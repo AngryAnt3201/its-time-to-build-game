@@ -6,6 +6,7 @@ export class Connection {
   private stateCallback: ((state: GameStateUpdate) => void) | null = null;
   private vibeOutputCallback: ((agentId: number, data: Uint8Array) => void) | null = null;
   private vibeSessionCallback: ((event: { type: 'started' | 'ended'; agentId: number; reason?: string }) => void) | null = null;
+  private gradeResultCallback: ((buildingId: string, stars: number, reasoning: string) => void) | null = null;
   private _connected = false;
   private pendingQueue: Uint8Array[] = [];
 
@@ -62,6 +63,14 @@ export class Connection {
                 reason: msg.VibeSessionEnded.reason,
               });
             }
+          } else if ('GradeResult' in msg) {
+            if (this.gradeResultCallback) {
+              this.gradeResultCallback(
+                msg.GradeResult.building_id,
+                msg.GradeResult.stars,
+                msg.GradeResult.reasoning,
+              );
+            }
           }
         } catch (err) {
           console.error('[network] Failed to decode ServerMessage:', err);
@@ -80,6 +89,10 @@ export class Connection {
 
   onVibeSession(callback: (event: { type: 'started' | 'ended'; agentId: number; reason?: string }) => void): void {
     this.vibeSessionCallback = callback;
+  }
+
+  onGradeResult(callback: (buildingId: string, stars: number, reasoning: string) => void): void {
+    this.gradeResultCallback = callback;
   }
 
   sendInput(input: PlayerInput): void {

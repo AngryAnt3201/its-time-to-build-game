@@ -29,6 +29,7 @@ export class BuildingToolbar {
   private container: HTMLDivElement;
   private nameEl: HTMLSpanElement;
   private statusEl: HTMLSpanElement;
+  private starsEl: HTMLSpanElement;
   private descEl: HTMLDivElement;
   private noPylonEl: HTMLDivElement;
   private slotsEl: HTMLDivElement;
@@ -74,8 +75,12 @@ export class BuildingToolbar {
     this.statusEl = document.createElement('span');
     this.statusEl.style.cssText = 'font-size: 9px; padding: 1px 6px; border-radius: 3px;';
 
+    this.starsEl = document.createElement('span');
+    this.starsEl.style.cssText = 'font-size: 10px; color: #d4a017; display: none;';
+
     header.appendChild(this.nameEl);
     header.appendChild(this.statusEl);
+    header.appendChild(this.starsEl);
 
     // Description line (for passive buildings)
     this.descEl = document.createElement('div');
@@ -281,6 +286,19 @@ export class BuildingToolbar {
       this.statusEl.style.background = '#333';
       this.statusEl.style.color = '#888';
     }
+  }
+
+  updateStars(stars: number | null): void {
+    if (stars === null || stars === undefined) {
+      this.starsEl.style.display = 'none';
+      return;
+    }
+    this.starsEl.style.display = 'inline';
+    let text = '';
+    for (let i = 1; i <= 6; i++) {
+      text += i <= stars ? '\u2605' : '\u2606';
+    }
+    this.starsEl.textContent = text;
   }
 
   private updateSlots(assignedAgents: AssignedAgent[]) {

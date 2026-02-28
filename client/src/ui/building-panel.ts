@@ -46,6 +46,12 @@ export class BuildingPanel {
   private currentPort: number | null = null;
   private loadedIframeSrc: string = 'about:blank';
 
+  private readonly gradeBtn: HTMLButtonElement;
+  private readonly gradeRow: HTMLDivElement;
+  private readonly starsEl: HTMLDivElement;
+  private readonly reasoningEl: HTMLParagraphElement;
+  private currentGrade: { stars: number; reasoning: string; grading: boolean } | null = null;
+
   /** The building ID currently displayed in the panel (null when closed). */
   get currentBuildingId(): string | null {
     return this._currentBuildingId;
@@ -121,6 +127,12 @@ export class BuildingPanel {
     this.toggleBtn.textContent = 'Start';
     this.toggleBtn.addEventListener('click', () => this.handleToggle());
 
+    // Grade button
+    this.gradeBtn = document.createElement('button');
+    this.applyButtonStyle(this.gradeBtn, false);
+    this.gradeBtn.textContent = 'Grade';
+    this.gradeBtn.addEventListener('click', () => this.handleGrade());
+
     // Close button
     this.closeBtn = document.createElement('button');
     this.applyButtonStyle(this.closeBtn, true);
@@ -130,6 +142,7 @@ export class BuildingPanel {
     header.appendChild(this.titleEl);
     header.appendChild(this.statusBadge);
     header.appendChild(this.toggleBtn);
+    header.appendChild(this.gradeBtn);
     header.appendChild(this.closeBtn);
 
     // ── Description ───────────────────────────────────────────────
@@ -144,6 +157,36 @@ export class BuildingPanel {
       borderBottom: `1px solid ${COLORS.headerBorder}`,
       flexShrink: '0',
     });
+
+    // ── Grade row ──────────────────────────────────────────────────
+    this.gradeRow = document.createElement('div');
+    Object.assign(this.gradeRow.style, {
+      display: 'none',
+      padding: '8px 16px',
+      borderBottom: `1px solid ${COLORS.headerBorder}`,
+      flexShrink: '0',
+    });
+
+    this.starsEl = document.createElement('div');
+    Object.assign(this.starsEl.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+      marginBottom: '4px',
+    });
+
+    this.reasoningEl = document.createElement('p');
+    Object.assign(this.reasoningEl.style, {
+      margin: '0',
+      fontSize: '11px',
+      fontFamily: FONT,
+      color: COLORS.mutedGold,
+      opacity: '0.7',
+      lineHeight: '1.4',
+    });
+
+    this.gradeRow.appendChild(this.starsEl);
+    this.gradeRow.appendChild(this.reasoningEl);
 
     // ── Iframe ────────────────────────────────────────────────────
     this.iframe = document.createElement('iframe');
@@ -160,6 +203,7 @@ export class BuildingPanel {
     // ── Assemble ──────────────────────────────────────────────────
     this.container.appendChild(header);
     this.container.appendChild(this.descriptionEl);
+    this.container.appendChild(this.gradeRow);
     this.container.appendChild(this.iframe);
 
     document.body.appendChild(this.container);
@@ -304,5 +348,67 @@ export class BuildingPanel {
       btn.style.background = COLORS.buttonBg;
       btn.style.borderColor = borderColor;
     });
+  }
+
+  private handleGrade(): void {
+    if (!this.currentBuildingId) return;
+    this.callbacks.onAction({ GradeBuilding: { building_id: this.currentBuildingId } });
+    this.gradeBtn.textContent = 'Grading...';
+    this.gradeBtn.disabled = true;
+    this.gradeBtn.style.opacity = '0.5';
+    this.gradeBtn.style.cursor = 'wait';
+  }
+
+  updateGrade(grade: { stars: number; reasoning: string; grading: boolean } | null): void {
+    this.currentGrade = grade;
+
+    if (!grade) {
+      this.gradeRow.style.display = 'none';
+      this.gradeBtn.textContent = 'Grade';
+      this.gradeBtn.disabled = false;
+      this.gradeBtn.style.opacity = '1';
+      this.gradeBtn.style.cursor = 'pointer';
+      return;
+    }
+
+    if (grade.grading) {
+      this.gradeBtn.textContent = 'Grading...';
+      this.gradeBtn.disabled = true;
+      this.gradeBtn.style.opacity = '0.5';
+      this.gradeBtn.style.cursor = 'wait';
+      return;
+    }
+
+    this.gradeBtn.textContent = 'Re-Grade';
+    this.gradeBtn.disabled = false;
+    this.gradeBtn.style.opacity = '1';
+    this.gradeBtn.style.cursor = 'pointer';
+
+    this.gradeRow.style.display = 'block';
+    this.renderStars(grade.stars);
+    this.reasoningEl.textContent = grade.reasoning;
+  }
+
+  private renderStars(count: number): void {
+    this.starsEl.innerHTML = '';
+
+    const multipliers: Record<number, string> = {
+      0: '0x', 1: '0.5x', 2: '1x', 3: '2x', 4: '3x', 5: '5x', 6: '10x',
+    };
+
+    for (let i = 1; i <= 6; i++) {
+      const star = document.createElement('span');
+      star.textContent = i <= count ? '\u2605' : '\u2606';
+      star.style.fontSize = '16px';
+      star.style.color = i <= count ? COLORS.gold : '#444444';
+      this.starsEl.appendChild(star);
+    }
+
+    const mult = document.createElement('span');
+    mult.textContent = ` (${multipliers[count] ?? '1x'} income)`;
+    mult.style.fontSize = '11px';
+    mult.style.color = count >= 5 ? COLORS.gold : COLORS.mutedGold;
+    mult.style.marginLeft = '8px';
+    this.starsEl.appendChild(mult);
   }
 }

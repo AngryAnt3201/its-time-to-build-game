@@ -24,6 +24,7 @@ import { BuildingToolbar } from './ui/building-toolbar';
 import { DeathScreen } from './ui/death-screen';
 import { TerminalOverlay } from './ui/terminal-overlay';
 import { AgentWorldTooltip, type AgentWorldData } from './ui/agent-world-tooltip';
+import { ChestWorldTooltip, type ChestTooltipCallbacks } from './ui/chest-world-tooltip';
 import { CombatVFX } from './renderer/combat-vfx';
 import { ALL_BUILDINGS, TIER_NAMES, buildingTypeToId as buildingIdFromType } from './data/buildings';
 import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta, BuildingTypeKind } from './network/protocol';
@@ -83,6 +84,41 @@ function isBuildingNearPylon(buildingId: string, entityMap: Map<number, EntityDe
     }
   }
   return false;
+}
+
+/** Find the nearest chest to a world position, if within range.
+ *  Returns { wx, wy } tile coords or null. */
+function findNearestChest(
+  worldPx: number, worldPy: number,
+  openedChests: Set<string>,
+  range: number,
+): { wx: number; wy: number } | null {
+  const CHEST_SEED = 55555;
+  const STEP = 8;
+  const playerTx = Math.floor(worldPx / TILE_PX);
+  const playerTy = Math.floor(worldPy / TILE_PX);
+  const baseTx = Math.floor(playerTx / STEP) * STEP;
+  const baseTy = Math.floor(playerTy / STEP) * STEP;
+
+  let best: { wx: number; wy: number; dist: number } | null = null;
+  for (let gy = -1; gy <= 1; gy++) {
+    for (let gx = -1; gx <= 1; gx++) {
+      const wx = baseTx + gx * STEP;
+      const wy = baseTy + gy * STEP;
+      if (!isWalkable(wx, wy)) continue;
+      if ((hash(wx, wy, CHEST_SEED) % 100) >= 10) continue;
+      if (openedChests.has(`${wx},${wy}`)) continue;
+      const chestPx = wx * TILE_PX + TILE_PX / 2;
+      const chestPy = wy * TILE_PX + TILE_PX / 2;
+      const dx = chestPx - worldPx;
+      const dy = chestPy - worldPy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < range && (!best || dist < best.dist)) {
+        best = { wx, wy, dist };
+      }
+    }
+  }
+  return best;
 }
 
 async function startGame() {
@@ -240,6 +276,12 @@ async function startGame() {
     },
   });
 
+  // Forward chest open to connection (connection created later)
+  let chestOpenForwarder: ((wx: number, wy: number) => void) | null = null;
+  const chestWorldTooltip = new ChestWorldTooltip({
+    onOpenChest: (wx, wy) => chestOpenForwarder?.(wx, wy),
+  });
+
   // Track which building the toolbar is currently showing for
   let toolbarBuildingEntityId: number | null = null;
 
@@ -343,6 +385,25 @@ async function startGame() {
   // ── Network connection ──────────────────────────────────────────
   const connection = new Connection('ws://127.0.0.1:9001');
   connectionRef = connection;
+
+  // Wire up chest open callback now that connection exists
+  chestOpenForwarder = (wx: number, wy: number) => {
+    // Verify player is within interaction range
+    const chestPx = wx * TILE_PX + TILE_PX / 2;
+    const chestPy = wy * TILE_PX + TILE_PX / 2;
+    const dx = chestPx - player.x;
+    const dy = chestPy - player.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 48) {
+      const input: PlayerInput = {
+        tick: clientTick,
+        movement: { x: 0, y: 0 },
+        action: { OpenChest: { wx, wy } },
+        target: null,
+      };
+      connection.sendInput(input);
+    }
+  };
 
   // Track the latest server state
   let latestState: GameStateUpdate | null = null;
@@ -631,6 +692,13 @@ async function startGame() {
         buildingToolbar.cancelScheduledHide();
         toolbarBuildingEntityId = nearestBuildingId;
 
+        // Update star display on toolbar
+        const toolbarGrades = latestState?.project_manager?.building_grades;
+        if (toolbarGrades) {
+          const toolbarGrade = toolbarGrades[buildingToolbar.currentBuildingId];
+          buildingToolbar.updateStars(toolbarGrade?.stars ?? null);
+        }
+
         // Position BELOW the building in screen coords (building sprite is 12px, so offset by ~10 world px)
         const screenBx = nearestBx * ZOOM + worldContainer.x;
         const screenBy = nearestBy * ZOOM + worldContainer.y + 10 * ZOOM;
@@ -696,6 +764,17 @@ async function startGame() {
         agentWorldTooltip.cancelScheduledHide();
       } else if (agentWorldTooltip.visible) {
         agentWorldTooltip.scheduleHide();
+      }
+    }
+
+    // ── Chest hover detection (for chest world tooltip) ─────────────
+    if (!terminalOverlay.visible) {
+      const nearestChest = findNearestChest(worldX, worldY, openedChests, 24);
+      if (nearestChest) {
+        chestWorldTooltip.show(nearestChest.wx, nearestChest.wy, e.clientX, e.clientY);
+        chestWorldTooltip.cancelScheduledHide();
+      } else if (chestWorldTooltip.visible) {
+        chestWorldTooltip.scheduleHide();
       }
     }
   });
@@ -799,6 +878,31 @@ async function startGame() {
           wheelPanel.open();
         } else if (nearestBldgType === 'CraftingTable') {
           craftingModal.open();
+        }
+      }
+
+      // ── Chest click — open chest if player is close enough ──
+      {
+        const worldX = (e.clientX - worldContainer.x) / ZOOM;
+        const worldY = (e.clientY - worldContainer.y) / ZOOM;
+        const clickedChest = findNearestChest(worldX, worldY, openedChests, 20);
+        if (clickedChest) {
+          // Verify player is within interaction range (40 world pixels)
+          const chestPx = clickedChest.wx * TILE_PX + TILE_PX / 2;
+          const chestPy = clickedChest.wy * TILE_PX + TILE_PX / 2;
+          const dx = chestPx - player.x;
+          const dy = chestPy - player.y;
+          const playerDist = Math.sqrt(dx * dx + dy * dy);
+          if (playerDist < 48) {
+            const input: PlayerInput = {
+              tick: clientTick,
+              movement: { x: 0, y: 0 },
+              action: { OpenChest: { wx: clickedChest.wx, wy: clickedChest.wy } },
+              target: null,
+            };
+            connection.sendInput(input);
+            chestWorldTooltip.hide();
+          }
         }
       }
     }
@@ -1001,80 +1105,34 @@ async function startGame() {
 
       if (justPressed.has('e')) {
         // Check for a nearby completed building to interact with
-        let interactedWithBuilding = false;
         const px = player.x;
         const py = player.y;
-
-        // Check for nearby chests using deterministic placement
-        if (!interactedWithBuilding) {
-          const CHEST_SEED = 55555;
-          const STEP = 8;
-          const playerTx = Math.floor(px / TILE_PX);
-          const playerTy = Math.floor(py / TILE_PX);
-          // Snap to nearest STEP-aligned grid, then check the 3x3 grid of candidates
-          const baseTx = Math.floor(playerTx / STEP) * STEP;
-          const baseTy = Math.floor(playerTy / STEP) * STEP;
-          for (let gy = -1; gy <= 1 && !interactedWithBuilding; gy++) {
-            for (let gx = -1; gx <= 1; gx++) {
-              const wx = baseTx + gx * STEP;
-              const wy = baseTy + gy * STEP;
-              if (!isWalkable(wx, wy)) continue;
-              if ((hash(wx, wy, CHEST_SEED) % 100) >= 10) continue;
-              if (openedChests.has(`${wx},${wy}`)) continue;
-              // Check pixel distance
-              const chestPx = wx * TILE_PX + TILE_PX / 2;
-              const chestPy = wy * TILE_PX + TILE_PX / 2;
-              const dx = chestPx - px;
-              const dy = chestPy - py;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < 40) {
-                const input: PlayerInput = {
-                  tick: clientTick,
-                  movement: { x: 0, y: 0 },
-                  action: { OpenChest: { wx, wy } },
-                  target: null,
-                };
-                connection.sendInput(input);
-                interactedWithBuilding = true;
-                break;
-              }
-            }
+        let nearestDist = 48; // interaction range in world pixels
+        let nearestType = '';
+        for (const entity of entityMap.values()) {
+          if (entity.kind !== 'Building') continue;
+          const data = (entity.data as { Building?: { building_type: string; construction_pct: number } }).Building;
+          if (!data || data.construction_pct < 1.0) continue;
+          const dx = entity.position.x - px;
+          const dy = entity.position.y - py;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestType = data.building_type;
           }
         }
-
-        if (!interactedWithBuilding) {
-          let nearestDist = 48; // interaction range in world pixels
-          let nearestType = '';
-          for (const entity of entityMap.values()) {
-            if (entity.kind !== 'Building') continue;
-            const data = (entity.data as { Building?: { building_type: string; construction_pct: number } }).Building;
-            if (!data || data.construction_pct < 1.0) continue;
-            const dx = entity.position.x - px;
-            const dy = entity.position.y - py;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < nearestDist) {
-              nearestDist = dist;
-              nearestType = data.building_type;
-            }
-          }
-          if (nearestType === 'TokenWheel') {
-            wheelPanel.open();
-            interactedWithBuilding = true;
-          } else if (nearestType === 'CraftingTable') {
-            craftingModal.open();
-            interactedWithBuilding = true;
-          } else if (nearestType) {
-            const buildingId = buildingTypeToId(nearestType);
-            const name = buildingTypeToName(nearestType);
-            const status = latestState?.project_manager?.building_statuses?.[buildingId] ?? 'NotInitialized';
-            buildingPanel.open(buildingId, name, `Building: ${name}`, status);
-            buildingToolbar.hide();
-            toolbarBuildingEntityId = null;
-            interactedWithBuilding = true;
-          }
+        if (nearestType === 'TokenWheel') {
+          wheelPanel.open();
+        } else if (nearestType === 'CraftingTable') {
+          craftingModal.open();
+        } else if (nearestType) {
+          const buildingId = buildingTypeToId(nearestType);
+          const name = buildingTypeToName(nearestType);
+          const status = latestState?.project_manager?.building_statuses?.[buildingId] ?? 'NotInitialized';
+          buildingPanel.open(buildingId, name, `Building: ${name}`, status);
+          buildingToolbar.hide();
+          toolbarBuildingEntityId = null;
         }
-
-        // Cranking is now done via the Spin button in the Wheel Panel
       }
     }
 
@@ -1315,6 +1373,13 @@ async function startGame() {
           const currentId = buildingPanel.currentBuildingId;
           const status = state.project_manager.building_statuses[currentId] ?? 'NotInitialized';
           buildingPanel.updateStatus(status);
+        }
+
+        // Update grade display
+        const grades = state.project_manager?.building_grades;
+        if (grades && buildingPanel.currentBuildingId) {
+          const grade = grades[buildingPanel.currentBuildingId];
+          buildingPanel.updateGrade(grade ?? null);
         }
       }
 
