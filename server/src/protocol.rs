@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 // ── Core type aliases ──────────────────────────────────────────────
 
@@ -226,6 +227,16 @@ pub struct DebugSnapshot {
     pub crank_tier: String,
 }
 
+// ── Project manager ───────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectManagerState {
+    pub base_dir: Option<String>,
+    pub initialized: bool,
+    pub unlocked_buildings: Vec<String>,
+    pub building_statuses: HashMap<String, String>, // building_id -> status string
+}
+
 // ── Main game state update (Server → Client) ──────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -239,6 +250,7 @@ pub struct GameStateUpdate {
     pub log_entries: Vec<LogEntry>,
     pub audio_triggers: Vec<AudioEvent>,
     pub debug: DebugSnapshot,
+    pub project_manager: Option<ProjectManagerState>,
 }
 
 // ── Client → Server messages ───────────────────────────────────────
@@ -268,6 +280,20 @@ pub enum PlayerAction {
     DebugToggleGodMode,
     DebugSpawnRogue { rogue_type: RogueTypeKind },
     DebugHealPlayer,
+    DebugSpawnAgent { tier: AgentTierKind },
+    DebugClearAgents,
+
+    // Project management actions
+    SetProjectDirectory { path: String },
+    InitializeProjects,
+    ResetProjects,
+    StartDevServer { building_id: String },
+    StopDevServer { building_id: String },
+    AssignAgentToProject { agent_id: u64, building_id: String },
+    UnassignAgentFromProject { agent_id: u64, building_id: String },
+    DebugUnlockAllBuildings,
+    DebugLockAllBuildings,
+    UnlockBuilding { building_id: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

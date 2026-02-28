@@ -1,7 +1,7 @@
 use its_time_to_build_server::ecs::components::*;
 use its_time_to_build_server::ecs::world::create_world;
 use its_time_to_build_server::ecs::systems::{agent_tick, building, combat, crank, economy, spawn};
-use its_time_to_build_server::game::collision;
+use its_time_to_build_server::game::{agents, collision};
 use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
 use its_time_to_build_server::protocol::*;
@@ -182,6 +182,36 @@ async fn main() {
                             health.current = health.max;
                         }
                         debug_log_entries.push("[debug] player healed to max".to_string());
+                    }
+                    PlayerAction::DebugSpawnAgent { tier } => {
+                        // Spawn near the player with a small offset
+                        let mut px = 400.0_f32;
+                        let mut py = 300.0_f32;
+                        for (_id, pos) in world.query_mut::<hecs::With<&Position, &Player>>() {
+                            px = pos.x;
+                            py = pos.y;
+                        }
+                        match agents::recruit_agent(&mut world, *tier, px + 30.0, py + 30.0, &mut game_state.economy) {
+                            Ok(_) => {
+                                debug_log_entries.push(format!("[debug] spawned {:?} agent", tier));
+                            }
+                            Err(e) => {
+                                debug_log_entries.push(format!("[debug] agent spawn failed: {}", e));
+                            }
+                        }
+                    }
+                    PlayerAction::DebugClearAgents => {
+                        let agent_entities: Vec<hecs::Entity> = world
+                            .query::<&Agent>()
+                            .iter()
+                            .map(|(entity, _)| entity)
+                            .collect();
+                        let count = agent_entities.len();
+                        for entity in agent_entities {
+                            debug_entities_removed.push(entity.to_bits().into());
+                            let _ = world.despawn(entity);
+                        }
+                        debug_log_entries.push(format!("[debug] cleared {} agents", count));
                     }
 
                     _ => {}
@@ -396,6 +426,7 @@ async fn main() {
                 phase: phase_to_string(&game_state.phase),
                 crank_tier: crank_tier_to_string(&game_state.crank.tier),
             },
+            project_manager: None,
         };
 
         // ── Send to client ───────────────────────────────────────────
