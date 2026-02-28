@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SettingsModal } from './SettingsModal';
 import { Particles } from './Particles';
+import { useTitleAudio } from './use-title-audio';
 import './TitleScreen.css';
 
 interface TitleScreenProps {
@@ -10,30 +11,37 @@ interface TitleScreenProps {
 export function TitleScreen({ onPlay }: TitleScreenProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const { playClick } = useTitleAudio();
 
   useEffect(() => {
-    // Trigger staggered entrance animations after mount
     requestAnimationFrame(() => setLoaded(true));
   }, []);
 
+  function handlePlay() {
+    playClick();
+    onPlay();
+  }
+
+  function handleOpenSettings() {
+    playClick();
+    setSettingsOpen(true);
+  }
+
+  function handleCloseSettings() {
+    playClick();
+    setSettingsOpen(false);
+  }
+
   return (
     <div className={`title-screen ${loaded ? 'loaded' : ''}`}>
-      {/* Background image layer */}
       <div
         className="title-bg"
         style={{ backgroundImage: "url('/splash.jpg')" }}
       />
-
-      {/* Vignette overlay — darkens edges, focuses center */}
       <div className="title-vignette" />
-
-      {/* Scanline overlay — CRT terminal feel */}
       <div className="title-scanlines" />
-
-      {/* Particle system — embers, sparks, motes, dust */}
       <Particles />
 
-      {/* Content */}
       <div className="title-content">
         <div className="title-text-group">
           <h1 className="title-glitch" data-text="IT'S TIME TO BUILD">
@@ -43,7 +51,7 @@ export function TitleScreen({ onPlay }: TitleScreenProps) {
           <p className="subtitle">THE EXPERIENCE</p>
         </div>
 
-        <button className="play-btn" onClick={onPlay}>
+        <button className="play-btn" onClick={handlePlay}>
           <span className="play-btn-text">[ ENTER ]</span>
           <span className="play-btn-glow" />
         </button>
@@ -53,7 +61,7 @@ export function TitleScreen({ onPlay }: TitleScreenProps) {
 
       <button
         className="settings-gear"
-        onClick={() => setSettingsOpen(true)}
+        onClick={handleOpenSettings}
         aria-label="Settings"
       >
         &#x2699;
@@ -61,7 +69,8 @@ export function TitleScreen({ onPlay }: TitleScreenProps) {
 
       <SettingsModal
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={handleCloseSettings}
+        onClickSound={playClick}
       />
     </div>
   );

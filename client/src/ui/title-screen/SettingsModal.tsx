@@ -4,9 +4,10 @@ import { getApiKey, setApiKey } from '../../utils/api-keys';
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
+  onClickSound?: () => void;
 }
 
-export function SettingsModal({ open, onClose }: SettingsModalProps) {
+export function SettingsModal({ open, onClose, onClickSound }: SettingsModalProps) {
   const [mistralKey, setMistralKey] = useState('');
   const [elevenlabsKey, setElevenlabsKey] = useState('');
   const [showMistral, setShowMistral] = useState(false);
@@ -33,6 +34,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   if (!open) return null;
 
   function handleSave() {
+    onClickSound?.();
     setApiKey('mistral', mistralKey);
     setApiKey('elevenlabs', elevenlabsKey);
     onClose();
@@ -44,10 +46,25 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   }
 
+  function handleClose() {
+    onClickSound?.();
+    onClose();
+  }
+
+  function toggleMistral() {
+    onClickSound?.();
+    setShowMistral(!showMistral);
+  }
+
+  function toggleElevenlabs() {
+    onClickSound?.();
+    setShowElevenlabs(!showElevenlabs);
+  }
+
   return (
     <div className="modal-backdrop" onClick={handleBackdropClick}>
       <div className="modal-panel">
-        <button className="modal-close" onClick={onClose} aria-label="Close settings">
+        <button className="modal-close" onClick={handleClose} aria-label="Close settings">
           X
         </button>
         <h2 className="modal-title">Settings</h2>
@@ -65,7 +82,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             />
             <button
               className="toggle-visibility"
-              onClick={() => setShowMistral(!showMistral)}
+              onClick={toggleMistral}
               type="button"
             >
               {showMistral ? 'HIDE' : 'SHOW'}
@@ -86,7 +103,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             />
             <button
               className="toggle-visibility"
-              onClick={() => setShowElevenlabs(!showElevenlabs)}
+              onClick={toggleElevenlabs}
               type="button"
             >
               {showElevenlabs ? 'HIDE' : 'SHOW'}
