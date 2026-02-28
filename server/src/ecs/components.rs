@@ -152,6 +152,16 @@ pub struct AgentVibeConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct WanderState {
+    pub home_x: f32,
+    pub home_y: f32,
+    pub waypoint_x: f32,
+    pub waypoint_y: f32,
+    pub pause_remaining: u32,
+    pub wander_radius: f32,
+}
+
+#[derive(Debug, Clone)]
 pub struct Assignment {
     pub task: TaskAssignment,
 }
