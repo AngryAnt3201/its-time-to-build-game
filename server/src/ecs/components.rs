@@ -52,6 +52,18 @@ pub struct Health {
 }
 
 #[derive(Debug, Clone)]
+pub struct Facing {
+    pub dx: f32,
+    pub dy: f32,
+}
+
+impl Default for Facing {
+    fn default() -> Self {
+        Self { dx: 0.0, dy: 1.0 } // facing down by default
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct TorchRange {
     pub radius: f32,
 }

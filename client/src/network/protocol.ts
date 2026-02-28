@@ -18,6 +18,7 @@ export interface PlayerSnapshot {
   max_health: number;
   tokens: number;
   torch_range: number;
+  facing: Vec2;
 }
 
 // ── Entities ───────────────────────────────────────────────────────

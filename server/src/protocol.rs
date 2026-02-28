@@ -23,6 +23,7 @@ pub struct PlayerSnapshot {
     pub max_health: f32,
     pub tokens: i64,
     pub torch_range: f32,
+    pub facing: Vec2,
 }
 
 // ── Entities ───────────────────────────────────────────────────────

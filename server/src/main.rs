@@ -110,9 +110,16 @@ async fn main() {
 
             let len = (mx * mx + my * my).sqrt();
             if len > 0.0 {
-                let dx = (mx / len) * PLAYER_SPEED;
-                let dy = (my / len) * PLAYER_SPEED;
-                for (_id, pos) in world.query_mut::<hecs::With<&mut Position, &Player>>() {
+                let norm_x = mx / len;
+                let norm_y = my / len;
+                let dx = norm_x * PLAYER_SPEED;
+                let dy = norm_y * PLAYER_SPEED;
+
+                for (_id, (pos, facing)) in world.query_mut::<hecs::With<(&mut Position, &mut Facing), &Player>>() {
+                    // Update facing direction
+                    facing.dx = norm_x;
+                    facing.dy = norm_y;
+
                     // Check X axis independently (wall-sliding)
                     let future_tx = collision::pixel_to_tile(pos.x + dx);
                     let cur_ty = collision::pixel_to_tile(pos.y);
@@ -687,15 +694,17 @@ async fn main() {
             max_health: 0.0,
             tokens: game_state.economy.balance,
             torch_range: 0.0,
+            facing: Vec2::default(),
         };
 
-        for (_id, (pos, health, torch)) in world
-            .query_mut::<hecs::With<(&Position, &Health, &TorchRange), &Player>>()
+        for (_id, (pos, health, torch, facing)) in world
+            .query_mut::<hecs::With<(&Position, &Health, &TorchRange, &Facing), &Player>>()
         {
             player_snapshot.position = Vec2 { x: pos.x, y: pos.y };
             player_snapshot.health = health.current as f32;
             player_snapshot.max_health = health.max as f32;
             player_snapshot.torch_range = torch.radius;
+            player_snapshot.facing = Vec2 { x: facing.dx, y: facing.dy };
         }
 
         // ── Collect audio triggers ───────────────────────────────────

@@ -6,8 +6,8 @@ use crate::game::upgrades::UpgradeState;
 
 use super::components::{
     Agent, AgentMorale, AgentName, AgentPersonality, AgentState, AgentStats, AgentTier, AgentXP,
-    Assignment, CombatPower, CrankState, CrankTier, CarryCapacity, GamePhase, GameState, Health,
-    Player, Position, TokenEconomy, TorchRange, Velocity, VoiceProfile, WeaponType,
+    Assignment, CombatPower, CrankState, CrankTier, CarryCapacity, Facing, GamePhase, GameState,
+    Health, Player, Position, TokenEconomy, TorchRange, Velocity, VoiceProfile, WeaponType,
 };
 
 /// Creates a new ECS world pre-populated with the player and one starting
@@ -31,6 +31,7 @@ pub fn create_world() -> (World, GameState) {
             attack_speed: 10.0,
             weapon: WeaponType::ProcessTerminator,
         },
+        Facing::default(),
     ));
 
     // ── Spawn starting agent "sol" ───────────────────────────────────
