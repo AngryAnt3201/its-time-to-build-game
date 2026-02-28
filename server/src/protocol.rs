@@ -50,6 +50,12 @@ pub enum EntityData {
         tier: AgentTierKind,
         health_pct: f32,
         morale_pct: f32,
+        stars: u8,
+        turns_used: u32,
+        max_turns: u32,
+        model_lore_name: String,
+        xp: u64,
+        level: u32,
     },
     Building {
         building_type: BuildingTypeKind,
@@ -210,6 +216,16 @@ pub struct EconomySnapshot {
     pub expenditure_per_sec: f64,
 }
 
+// ── Debug snapshot ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DebugSnapshot {
+    pub spawning_enabled: bool,
+    pub god_mode: bool,
+    pub phase: String,
+    pub crank_tier: String,
+}
+
 // ── Main game state update (Server → Client) ──────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -222,6 +238,7 @@ pub struct GameStateUpdate {
     pub economy: EconomySnapshot,
     pub log_entries: Vec<LogEntry>,
     pub audio_triggers: Vec<AudioEvent>,
+    pub debug: DebugSnapshot,
 }
 
 // ── Client → Server messages ───────────────────────────────────────
@@ -240,6 +257,17 @@ pub enum PlayerAction {
     CrankStart,
     CrankStop,
     RollbackAgent,
+
+    // Debug actions
+    DebugSetTokens { amount: i64 },
+    DebugAddTokens { amount: i64 },
+    DebugToggleSpawning,
+    DebugClearRogues,
+    DebugSetPhase { phase: String },
+    DebugSetCrankTier { tier: String },
+    DebugToggleGodMode,
+    DebugSpawnRogue { rogue_type: RogueTypeKind },
+    DebugHealPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,11 +1,52 @@
 use its_time_to_build_server::ecs::components::*;
 use its_time_to_build_server::ecs::world::create_world;
 use its_time_to_build_server::ecs::systems::{building, combat, crank, economy, spawn};
+use its_time_to_build_server::game::collision;
 use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
 use its_time_to_build_server::protocol::*;
 use tokio::time::{interval, Duration};
 use tracing::info;
+
+fn parse_phase(s: &str) -> Option<GamePhase> {
+    match s {
+        "Hut" => Some(GamePhase::Hut),
+        "Outpost" => Some(GamePhase::Outpost),
+        "Village" => Some(GamePhase::Village),
+        "Network" => Some(GamePhase::Network),
+        "City" => Some(GamePhase::City),
+        _ => None,
+    }
+}
+
+fn parse_crank_tier(s: &str) -> Option<CrankTier> {
+    match s {
+        "HandCrank" => Some(CrankTier::HandCrank),
+        "GearAssembly" => Some(CrankTier::GearAssembly),
+        "WaterWheel" => Some(CrankTier::WaterWheel),
+        "RunicEngine" => Some(CrankTier::RunicEngine),
+        _ => None,
+    }
+}
+
+fn phase_to_string(phase: &GamePhase) -> String {
+    match phase {
+        GamePhase::Hut => "Hut".to_string(),
+        GamePhase::Outpost => "Outpost".to_string(),
+        GamePhase::Village => "Village".to_string(),
+        GamePhase::Network => "Network".to_string(),
+        GamePhase::City => "City".to_string(),
+    }
+}
+
+fn crank_tier_to_string(tier: &CrankTier) -> String {
+    match tier {
+        CrankTier::HandCrank => "HandCrank".to_string(),
+        CrankTier::GearAssembly => "GearAssembly".to_string(),
+        CrankTier::WaterWheel => "WaterWheel".to_string(),
+        CrankTier::RunicEngine => "RunicEngine".to_string(),
+    }
+}
 
 const TICK_RATE_HZ: u64 = 20;
 const TICK_DURATION: Duration = Duration::from_millis(1000 / TICK_RATE_HZ);
@@ -37,17 +78,34 @@ async fn main() {
         // Reset per-tick flags
         player_attacking = false;
 
+        // Debug actions may generate log entries and remove entities
+        let mut debug_log_entries: Vec<String> = Vec::new();
+        let mut debug_entities_removed: Vec<EntityId> = Vec::new();
+
         // ── 1. Process player input (movement + actions) ─────────────
         while let Ok(input) = server.input_rx.try_recv() {
-            // Movement
+            // Movement with collision
             let mx = input.movement.x;
             let my = input.movement.y;
 
             let len = (mx * mx + my * my).sqrt();
             if len > 0.0 {
+                let dx = (mx / len) * PLAYER_SPEED;
+                let dy = (my / len) * PLAYER_SPEED;
                 for (_id, pos) in world.query_mut::<hecs::With<&mut Position, &Player>>() {
-                    pos.x += (mx / len) * PLAYER_SPEED;
-                    pos.y += (my / len) * PLAYER_SPEED;
+                    // Check X axis independently (wall-sliding)
+                    let future_tx = collision::pixel_to_tile(pos.x + dx);
+                    let cur_ty = collision::pixel_to_tile(pos.y);
+                    if collision::is_walkable(future_tx, cur_ty) {
+                        pos.x += dx;
+                    }
+
+                    // Check Y axis independently (wall-sliding)
+                    let cur_tx = collision::pixel_to_tile(pos.x);
+                    let future_ty = collision::pixel_to_tile(pos.y + dy);
+                    if collision::is_walkable(cur_tx, future_ty) {
+                        pos.y += dy;
+                    }
                 }
             }
 
@@ -63,6 +121,69 @@ async fn main() {
                     PlayerAction::CrankStop => {
                         player_cranking = false;
                     }
+
+                    // ── Debug actions ──────────────────────────────────
+                    PlayerAction::DebugSetTokens { amount } => {
+                        game_state.economy.balance = *amount;
+                        debug_log_entries.push(format!("[debug] tokens set to {}", amount));
+                    }
+                    PlayerAction::DebugAddTokens { amount } => {
+                        game_state.economy.balance += amount;
+                        debug_log_entries.push(format!("[debug] added {} tokens", amount));
+                    }
+                    PlayerAction::DebugToggleSpawning => {
+                        game_state.spawning_enabled = !game_state.spawning_enabled;
+                        let status = if game_state.spawning_enabled { "ON" } else { "OFF" };
+                        debug_log_entries.push(format!("[debug] spawning {}", status));
+                    }
+                    PlayerAction::DebugClearRogues => {
+                        let rogue_entities: Vec<hecs::Entity> = world
+                            .query::<&Rogue>()
+                            .iter()
+                            .map(|(entity, _)| entity)
+                            .collect();
+                        let count = rogue_entities.len();
+                        for entity in rogue_entities {
+                            debug_entities_removed.push(entity.to_bits().into());
+                            let _ = world.despawn(entity);
+                        }
+                        debug_log_entries.push(format!("[debug] cleared {} rogues", count));
+                    }
+                    PlayerAction::DebugSetPhase { phase } => {
+                        if let Some(p) = parse_phase(phase) {
+                            game_state.phase = p;
+                            debug_log_entries.push(format!("[debug] phase set to {}", phase));
+                        }
+                    }
+                    PlayerAction::DebugSetCrankTier { tier } => {
+                        if let Some(t) = parse_crank_tier(tier) {
+                            game_state.crank.tier = t;
+                            debug_log_entries.push(format!("[debug] crank tier set to {}", tier));
+                        }
+                    }
+                    PlayerAction::DebugToggleGodMode => {
+                        game_state.god_mode = !game_state.god_mode;
+                        let status = if game_state.god_mode { "ON" } else { "OFF" };
+                        debug_log_entries.push(format!("[debug] god mode {}", status));
+                    }
+                    PlayerAction::DebugSpawnRogue { rogue_type } => {
+                        // Spawn near the player with a small offset
+                        let mut px = 400.0_f32;
+                        let mut py = 300.0_f32;
+                        for (_id, pos) in world.query_mut::<hecs::With<&Position, &Player>>() {
+                            px = pos.x;
+                            py = pos.y;
+                        }
+                        spawn::spawn_rogue(&mut world, px + 50.0, py + 50.0, *rogue_type);
+                        debug_log_entries.push(format!("[debug] spawned {:?}", rogue_type));
+                    }
+                    PlayerAction::DebugHealPlayer => {
+                        for (_id, health) in world.query_mut::<hecs::With<&mut Health, &Player>>() {
+                            health.current = health.max;
+                        }
+                        debug_log_entries.push("[debug] player healed to max".to_string());
+                    }
+
                     _ => {}
                 }
             }
@@ -87,11 +208,14 @@ async fn main() {
         let combat_result = combat::combat_system(&mut world, &mut game_state, player_attacking);
 
         // Collect entity IDs of killed rogues before they were despawned
-        let entities_removed: Vec<EntityId> = combat_result
+        let mut entities_removed: Vec<EntityId> = combat_result
             .killed_rogues
             .iter()
             .map(|(entity, _kind)| entity.to_bits().into())
             .collect();
+
+        // Include debug-removed entities
+        entities_removed.extend(debug_entities_removed);
 
         // ── 5. Building system ───────────────────────────────────────
         let building_result = building::building_system(&mut world);
@@ -138,11 +262,19 @@ async fn main() {
             });
         }
 
+        for text in &debug_log_entries {
+            log_entries.push(LogEntry {
+                tick: game_state.tick,
+                text: text.clone(),
+                category: LogCategory::System,
+            });
+        }
+
         // ── 9. Build entities_changed from ALL entity types ──────────
         let mut entities_changed: Vec<EntityDelta> = Vec::new();
 
         // Agents
-        for (id, (pos, name, state, tier, health, morale)) in world.query_mut::<hecs::With<
+        for (id, (pos, name, state, tier, health, morale, vibe, xp_comp)) in world.query_mut::<hecs::With<
             (
                 &Position,
                 &AgentName,
@@ -150,6 +282,8 @@ async fn main() {
                 &AgentTier,
                 &Health,
                 &AgentMorale,
+                &AgentVibeConfig,
+                &AgentXP,
             ),
             &Agent,
         >>() {
@@ -169,6 +303,12 @@ async fn main() {
                     tier: tier.tier,
                     health_pct,
                     morale_pct: morale.value,
+                    stars: vibe.stars,
+                    turns_used: vibe.turns_used,
+                    max_turns: vibe.max_turns,
+                    model_lore_name: vibe.model_lore_name.clone(),
+                    xp: xp_comp.xp,
+                    level: xp_comp.level,
                 },
             });
         }
@@ -239,6 +379,12 @@ async fn main() {
             },
             log_entries,
             audio_triggers,
+            debug: DebugSnapshot {
+                spawning_enabled: game_state.spawning_enabled,
+                god_mode: game_state.god_mode,
+                phase: phase_to_string(&game_state.phase),
+                crank_tier: crank_tier_to_string(&game_state.crank.tier),
+            },
         };
 
         // ── Send to client ───────────────────────────────────────────
