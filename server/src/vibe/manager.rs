@@ -16,9 +16,13 @@ pub struct VibeManager {
 
 impl VibeManager {
     pub fn new() -> Self {
+        let api_key = std::env::var("MISTRAL_API_KEY").ok().filter(|k| !k.is_empty());
+        if api_key.is_some() {
+            info!("Using MISTRAL_API_KEY from environment");
+        }
         Self {
             sessions: HashMap::new(),
-            api_key: None,
+            api_key,
             output_receivers: HashMap::new(),
             failed_spawns: std::collections::HashSet::new(),
         }

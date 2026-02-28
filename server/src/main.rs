@@ -57,6 +57,8 @@ const PLAYER_SPEED: f32 = 3.0; // pixels per tick
 
 #[tokio::main]
 async fn main() {
+    // Load .env file if present (silently ignore if missing)
+    let _ = dotenvy::dotenv();
     tracing_subscriber::fmt::init();
 
     // Start the HTTP API server (for native file dialog, etc.) in the background.
