@@ -278,12 +278,18 @@ export class AgentsHUD {
     name.y = 2;
     card.addChild(name);
 
-    // Tier badge
-    const tierColor = TIER_COLORS[agent.tier];
-    const tierBadge = new Graphics();
-    tierBadge.roundRect(cw - 10, 3, 6, 6, 1);
-    tierBadge.fill(tierColor);
-    card.addChild(tierBadge);
+    // Star rating (replaces old tier badge dot)
+    const starText = new Text({
+      text: '\u2605'.repeat(agent.stars) + '\u2606'.repeat(3 - agent.stars),
+      style: new TextStyle({
+        fontFamily: FONT,
+        fontSize: 9,
+        fill: 0xd4a017,
+      }),
+    });
+    starText.x = cw - starText.width - 4;
+    starText.y = 3;
+    card.addChild(starText);
 
     // State text
     const stateText = new Text({
