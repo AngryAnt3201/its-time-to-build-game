@@ -17,9 +17,25 @@ import { Grimoire } from './ui/grimoire';
 import { DebugPanel } from './ui/debug-panel';
 import { BuildingPanel } from './ui/building-panel';
 import { Minimap } from './ui/minimap';
-import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta } from './network/protocol';
+import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta, BuildingTypeKind } from './network/protocol';
 import { AudioManager } from './audio/manager';
 import { getProjectDir, getProjectInitFlag, setProjectInitFlag } from './utils/project-settings';
+
+// ── Building light source lookup ─────────────────────────────────────
+// Maps building types to their light radius (in world pixels).
+// Only buildings that emit light are listed here.
+// Must be kept in sync with server/src/game/building.rs definitions.
+const BUILDING_LIGHT_RADIUS: Partial<Record<BuildingTypeKind, number>> = {
+  Pylon: 200,
+  ResearchLab: 80,
+  PomodoroTimer: 40,
+  OauthIntegration: 60,
+  TransformerModel: 80,
+  AutonomousAgentFramework: 100,
+  WordleClone: 90,
+  NftMarketplace: 50,
+  Blockchain: 70,
+};
 
 /** Convert PascalCase building type to snake_case building ID. */
 function buildingTypeToId(type: string): string {
@@ -283,6 +299,10 @@ async function startGame() {
     worldRenderer.toggleDebugBoundaries();
   };
 
+  debugPanel.onToggleFullLight = () => {
+    lightingRenderer.setFullLight(!lightingRenderer.fullLight);
+  };
+
   // ── Default equipment loadout ──────────────────────────────────
   equipmentHud.equipWeapon('shortsword');
   equipmentHud.equipArmour('cloth');
@@ -450,11 +470,19 @@ async function startGame() {
         buildMenu.selectNext();
         return;
       }
+      if (key === 'arrowleft' || key === 'a') {
+        buildMenu.selectLeft();
+        return;
+      }
+      if (key === 'arrowright' || key === 'd') {
+        buildMenu.selectRight();
+        return;
+      }
       if (key === 'enter') {
         buildMenu.confirmSelection();
         return;
       }
-      if (key === 'escape') {
+      if (key === 'escape' || key === 'b') {
         buildMenu.close();
         return;
       }
@@ -476,6 +504,11 @@ async function startGame() {
         // selectByKey triggers onSelect which enters placement mode
         return;
       }
+    }
+
+    if (key === '0') {
+      buildMenu.toggle();
+      return;
     }
 
     if (!keys.has(key)) {
@@ -623,9 +656,26 @@ async function startGame() {
       torchLight.x = pos.x;
       torchLight.y = pos.y;
 
+      // ── Collect all light sources (player + buildings) ──────────────
+      const lightSources: Array<{ x: number; y: number; radius: number }> = [];
+
+      // Player torch
       if (state.player.torch_range > 0) {
-        lightingRenderer.updateTorchLight(pos.x, pos.y, state.player.torch_range);
+        lightSources.push({ x: pos.x, y: pos.y, radius: state.player.torch_range });
       }
+
+      // Completed buildings with light sources
+      for (const entity of entityMap.values()) {
+        if (entity.kind !== 'Building') continue;
+        const data = (entity.data as { Building?: { building_type: BuildingTypeKind; construction_pct: number } }).Building;
+        if (!data || data.construction_pct < 1.0) continue;
+        const radius = BUILDING_LIGHT_RADIUS[data.building_type];
+        if (radius) {
+          lightSources.push({ x: entity.position.x, y: entity.position.y, radius });
+        }
+      }
+
+      lightingRenderer.updateLights(lightSources);
 
       // Update entity renderer with changed/removed entities
       entityRenderer.update(state.entities_changed, state.entities_removed);
