@@ -21,7 +21,12 @@ pub fn agent_tick_system(world: &mut World, economy: &mut TokenEconomy) -> Agent
         .query_mut::<hecs::With<(&AgentState, &mut AgentVibeConfig, &AgentStats), &Agent>>()
     {
         match state.state {
-            AgentStateKind::Building | AgentStateKind::Exploring | AgentStateKind::Defending => {
+            AgentStateKind::Building => {
+                // Building agents run a real Vibe CLI session.
+                // The CLI enforces its own --max-turns limit and exits naturally.
+                // We don't increment turns_used or error-check here.
+            }
+            AgentStateKind::Exploring | AgentStateKind::Defending => {
                 vibe.turns_used += 1;
 
                 // Check turn limit
