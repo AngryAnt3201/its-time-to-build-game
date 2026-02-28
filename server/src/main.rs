@@ -4,6 +4,7 @@ use its_time_to_build_server::ecs::systems::{agent_tick, building, combat, crank
 use its_time_to_build_server::game::{agents, collision};
 use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
+use its_time_to_build_server::project;
 use its_time_to_build_server::protocol::*;
 use tokio::time::{interval, Duration};
 use tracing::info;
@@ -64,6 +65,11 @@ async fn main() {
 
     // ── Create ECS world and game state ──────────────────────────────
     let (mut world, mut game_state) = create_world();
+
+    // ── Create project manager ───────────────────────────────────────
+    let mut project_manager = project::ProjectManager::new(
+        std::path::Path::new("buildings_manifest.json"),
+    );
 
     let mut ticker = interval(TICK_DURATION);
 
@@ -212,6 +218,102 @@ async fn main() {
                             let _ = world.despawn(entity);
                         }
                         debug_log_entries.push(format!("[debug] cleared {} agents", count));
+                    }
+
+                    // ── Project management actions ──────────────────────
+                    PlayerAction::SetProjectDirectory { path } => {
+                        match project_manager.set_base_dir(path.clone()) {
+                            Ok(()) => {
+                                debug_log_entries.push(format!("[project] base dir set to {}", path));
+                            }
+                            Err(e) => {
+                                debug_log_entries.push(format!("[project] set dir failed: {}", e));
+                            }
+                        }
+                    }
+                    PlayerAction::InitializeProjects => {
+                        match project_manager.initialize_projects().await {
+                            Ok(msgs) => {
+                                for msg in &msgs {
+                                    debug_log_entries.push(format!("[project] {}", msg));
+                                }
+                                debug_log_entries.push("[project] initialization complete".to_string());
+                            }
+                            Err(e) => {
+                                debug_log_entries.push(format!("[project] init failed: {}", e));
+                            }
+                        }
+                    }
+                    PlayerAction::ResetProjects => {
+                        match project_manager.reset_projects().await {
+                            Ok(msgs) => {
+                                for msg in &msgs {
+                                    debug_log_entries.push(format!("[project] {}", msg));
+                                }
+                                debug_log_entries.push("[project] reset complete".to_string());
+                            }
+                            Err(e) => {
+                                debug_log_entries.push(format!("[project] reset failed: {}", e));
+                            }
+                        }
+                    }
+                    PlayerAction::StartDevServer { building_id } => {
+                        match project_manager.start_dev_server(building_id).await {
+                            Ok(port) => {
+                                debug_log_entries.push(format!(
+                                    "[project] dev server for {} started on port {}",
+                                    building_id, port
+                                ));
+                            }
+                            Err(e) => {
+                                debug_log_entries.push(format!(
+                                    "[project] start dev server {} failed: {}",
+                                    building_id, e
+                                ));
+                            }
+                        }
+                    }
+                    PlayerAction::StopDevServer { building_id } => {
+                        match project_manager.stop_dev_server(building_id).await {
+                            Ok(()) => {
+                                debug_log_entries.push(format!(
+                                    "[project] dev server for {} stopped",
+                                    building_id
+                                ));
+                            }
+                            Err(e) => {
+                                debug_log_entries.push(format!(
+                                    "[project] stop dev server {} failed: {}",
+                                    building_id, e
+                                ));
+                            }
+                        }
+                    }
+                    PlayerAction::AssignAgentToProject { agent_id, building_id } => {
+                        project_manager.assign_agent(building_id, *agent_id);
+                        debug_log_entries.push(format!(
+                            "[project] agent {} assigned to {}",
+                            agent_id, building_id
+                        ));
+                    }
+                    PlayerAction::UnassignAgentFromProject { agent_id, building_id } => {
+                        project_manager.unassign_agent(building_id, *agent_id);
+                        debug_log_entries.push(format!(
+                            "[project] agent {} unassigned from {}",
+                            agent_id, building_id
+                        ));
+                    }
+                    PlayerAction::DebugUnlockAllBuildings => {
+                        project_manager.unlock_all();
+                        debug_log_entries.push("[debug] all buildings unlocked".to_string());
+                    }
+                    PlayerAction::DebugLockAllBuildings => {
+                        project_manager.lock_all_non_default();
+                        debug_log_entries.push("[debug] non-default buildings locked".to_string());
+                    }
+                    PlayerAction::UnlockBuilding { building_id } => {
+                        project_manager.unlock_building(building_id);
+                        debug_log_entries.push(format!("[project] building {} unlocked", building_id));
                     }
 
                     _ => {}
@@ -426,7 +528,20 @@ async fn main() {
                 phase: phase_to_string(&game_state.phase),
                 crank_tier: crank_tier_to_string(&game_state.crank.tier),
             },
-            project_manager: None,
+            project_manager: Some(ProjectManagerState {
+                base_dir: project_manager.base_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
+                initialized: project_manager.initialized,
+                unlocked_buildings: project_manager.get_unlocked_buildings(),
+                building_statuses: project_manager.statuses.iter().map(|(k, v)| {
+                    let status_str = match v {
+                        project::ProjectStatus::NotInitialized => "NotInitialized".to_string(),
+                        project::ProjectStatus::Ready => "Ready".to_string(),
+                        project::ProjectStatus::Running(port) => format!("Running:{port}"),
+                        project::ProjectStatus::Error(msg) => format!("Error:{msg}"),
+                    };
+                    (k.clone(), status_str)
+                }).collect(),
+            }),
         };
 
         // ── Send to client ───────────────────────────────────────────

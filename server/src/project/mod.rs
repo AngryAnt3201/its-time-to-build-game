@@ -33,7 +33,7 @@ pub struct ProjectManager {
     /// Whether initial project scaffolding has been run.
     pub initialized: bool,
     /// Per-building project status.
-    statuses: HashMap<String, ProjectStatus>,
+    pub statuses: HashMap<String, ProjectStatus>,
     /// Stub: mapping from building id to a list of assigned agent entity ids.
     agent_assignments: HashMap<String, Vec<u64>>,
 }
