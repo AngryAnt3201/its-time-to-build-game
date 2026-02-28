@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod ecs;
 pub mod game;
 pub mod network;
