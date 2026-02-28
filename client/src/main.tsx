@@ -20,6 +20,7 @@ import { Minimap } from './ui/minimap';
 import { HotbarTooltip } from './ui/hotbar-tooltip';
 import { BuildingToolbar } from './ui/building-toolbar';
 import { TerminalOverlay } from './ui/terminal-overlay';
+import { AgentWorldTooltip, type AgentWorldData } from './ui/agent-world-tooltip';
 import { ALL_BUILDINGS, TIER_NAMES, buildingTypeToId as buildingIdFromType } from './data/buildings';
 import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta, BuildingTypeKind } from './network/protocol';
 import { AudioManager } from './audio/manager';
@@ -154,6 +155,12 @@ async function startGame() {
         action: { VibeInput: { agent_id: agentId, data } },
         target: null,
       });
+    },
+  });
+
+  const agentWorldTooltip = new AgentWorldTooltip({
+    onOpenTerminal: (agentId, buildingId, agentName, buildingName) => {
+      terminalOverlay.openPinned(agentId, buildingId, agentName, buildingName);
     },
   });
 
@@ -513,20 +520,65 @@ async function startGame() {
       const screenBx = nearestBx * ZOOM + worldContainer.x;
       const screenBy = nearestBy * ZOOM + worldContainer.y + 10 * ZOOM;
       buildingToolbar.updatePosition(screenBx, screenBy);
-
-      // Show terminal overlay for buildings with active vibe sessions
-      if (assignments.length > 0) {
-        const firstAgentId = assignments[0];
-        const agentEntity = entityMap.get(firstAgentId);
-        const agentData = agentEntity ? (agentEntity.data as { Agent?: { name: string; state: string } }).Agent : null;
-        if (agentData && agentData.state === 'Building') {
-          const termScreenBx = nearestBx * ZOOM + worldContainer.x;
-          const termScreenBy = nearestBy * ZOOM + worldContainer.y - 40 * ZOOM;
-          terminalOverlay.showPeek(firstAgentId, bid, agentData.name, buildingTypeToName(nearestBuildingType), termScreenBx, termScreenBy);
-        }
-      }
     } else if (buildingToolbar.visible) {
       buildingToolbar.scheduleHide();
+    }
+
+    // ── Agent hover detection (for agent world tooltip) ────────────────
+    if (!terminalOverlay.visible) {
+      let nearestAgentId: number | null = null;
+      type AgentEntityData = { name: string; tier: string; state: string; health_pct: number; morale_pct: number; stars: number; turns_used: number; max_turns: number; model_lore_name: string; xp: number; level: number };
+      let nearestAgentDist = 32; // hover range in world pixels
+      let nearestAgentData: AgentEntityData | null = null;
+
+      for (const entity of entityMap.values()) {
+        if (entity.kind !== 'Agent') continue;
+        const data = (entity.data as { Agent?: AgentEntityData }).Agent;
+        if (!data) continue;
+        const dx = entity.position.x - worldX;
+        const dy = entity.position.y - worldY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < nearestAgentDist) {
+          nearestAgentDist = dist;
+          nearestAgentId = entity.id;
+          nearestAgentData = data;
+        }
+      }
+
+      if (nearestAgentId !== null && nearestAgentData !== null) {
+        // Find which building this agent is assigned to (if any)
+        let agentBuildingId = '';
+        let agentBuildingName = '';
+        if (latestState?.project_manager?.agent_assignments) {
+          for (const [bid, agents] of Object.entries(latestState.project_manager.agent_assignments)) {
+            if ((agents as number[]).includes(nearestAgentId)) {
+              agentBuildingId = bid;
+              agentBuildingName = buildingTypeToName(bid.replace(/_./g, m => m[1].toUpperCase()).replace(/^./, c => c.toUpperCase()));
+              break;
+            }
+          }
+        }
+
+        const agentWorldData: AgentWorldData = {
+          id: nearestAgentId,
+          name: nearestAgentData.name,
+          tier: nearestAgentData.tier,
+          state: nearestAgentData.state,
+          health_pct: nearestAgentData.health_pct,
+          morale_pct: nearestAgentData.morale_pct,
+          stars: nearestAgentData.stars,
+          turns_used: nearestAgentData.turns_used,
+          max_turns: nearestAgentData.max_turns,
+          model_lore_name: nearestAgentData.model_lore_name,
+          xp: nearestAgentData.xp,
+          level: nearestAgentData.level,
+        };
+
+        agentWorldTooltip.show(agentWorldData, e.clientX, e.clientY, agentBuildingId, agentBuildingName);
+        agentWorldTooltip.cancelScheduledHide();
+      } else if (agentWorldTooltip.visible) {
+        agentWorldTooltip.scheduleHide();
+      }
     }
   });
 
@@ -602,7 +654,7 @@ async function startGame() {
 
     // ── Terminal overlay key handling ─────────────────────────────
     if (terminalOverlay.visible && key === 'escape') {
-      terminalOverlay.unpin();
+      terminalOverlay.close();
       return;
     }
 
