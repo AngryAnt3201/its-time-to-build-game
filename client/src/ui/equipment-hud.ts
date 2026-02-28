@@ -199,6 +199,8 @@ export class EquipmentHUD {
   /** The tooltip container — add to the top-level UI so it renders above everything. */
   readonly tooltipContainer: Container;
 
+  onEquipChange: ((kind: 'weapon' | 'armour', id: string) => void) | null = null;
+
   private equippedWeapon: WeaponDef | null = null;
   private equippedArmour: ArmourDef | null = null;
 
@@ -358,11 +360,13 @@ export class EquipmentHUD {
   equipWeapon(weaponId: string): void {
     this.equippedWeapon = WEAPONS.find((w) => w.id === weaponId) ?? null;
     this.renderWeaponSlot();
+    this.onEquipChange?.('weapon', weaponId);
   }
 
   equipArmour(armourId: string): void {
     this.equippedArmour = ARMOURS.find((a) => a.id === armourId) ?? null;
     this.renderArmourSlot();
+    this.onEquipChange?.('armour', armourId);
   }
 
   unequipWeapon(): void {

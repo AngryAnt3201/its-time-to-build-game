@@ -89,6 +89,9 @@ async function startGame() {
   // ── Persistent entity map (tracks buildings across ticks) ─────────
   const entityMap: Map<number, EntityDelta> = new Map();
 
+  // ── Building counts cache (for tooltip cost display) ──────────────
+  let buildingCountsCache: Map<BuildingTypeKind, number> = new Map();
+
   // ── Building interaction panel ────────────────────────────────────
   // Connection is not yet created here, so we use a forwarding closure
   // that captures the variable once it's assigned below.
@@ -405,6 +408,17 @@ async function startGame() {
   equipmentHud.equipWeapon('shortsword');
   equipmentHud.equipArmour('cloth');
 
+  // Sync initial equipment to server
+  connection.sendInput({ tick: 0, movement: { x: 0, y: 0 }, action: { EquipWeapon: { weapon_id: 'shortsword' } }, target: null });
+  connection.sendInput({ tick: 0, movement: { x: 0, y: 0 }, action: { EquipArmor: { armor_id: 'cloth' } }, target: null });
+
+  equipmentHud.onEquipChange = (kind: 'weapon' | 'armour', id: string) => {
+    const action: PlayerAction = kind === 'weapon'
+      ? { EquipWeapon: { weapon_id: id } }
+      : { EquipArmor: { armor_id: id } };
+    connection.sendInput({ tick: clientTickRef, movement: { x: 0, y: 0 }, action, target: null });
+  };
+
   // ── Mouse tracking for placement mode ─────────────────────────
   let mouseScreenX = 0;
   let mouseScreenY = 0;
@@ -432,12 +446,23 @@ async function startGame() {
         const buildingDef = ALL_BUILDINGS.find(b => b.type === entry.type);
         const buildingId = buildingIdFromType(entry.type);
         const tierLabel = TIER_NAMES[buildingDef?.tier ?? 0] ?? '';
+        const tier = buildingDef?.tier ?? 0;
 
-        // Determine status
+        // Determine status — infrastructure (tier 0) is always available
         let status = 'Available';
-        const unlocked = latestState?.project_manager?.unlocked_buildings ?? [];
-        if (unlocked.length > 0 && !unlocked.includes(buildingId)) {
-          status = 'Locked';
+        if (tier > 0) {
+          const unlocked = latestState?.project_manager?.unlocked_buildings ?? [];
+          if (unlocked.length > 0 && !unlocked.includes(buildingId)) {
+            status = 'Locked';
+          }
+        }
+
+        // Calculate display cost (escalating for stackable infrastructure)
+        let displayCost = entry.cost;
+        const isStackable = entry.type === 'Pylon' || entry.type === 'ComputeFarm';
+        if (isStackable) {
+          const existingCount = buildingCountsCache.get(entry.type) ?? 0;
+          displayCost = Math.ceil(entry.cost * Math.pow(1.5, existingCount));
         }
 
         // Position above the slot center
@@ -447,7 +472,7 @@ async function startGame() {
         hotbarTooltip.show(
           slotScreenX, slotScreenY,
           buildingDef?.name ?? entry.name,
-          entry.cost,
+          displayCost,
           buildingDef?.description ?? '',
           tierLabel,
           status,
@@ -993,6 +1018,20 @@ async function startGame() {
       }
       for (const removedId of state.entities_removed) {
         entityMap.delete(removedId);
+      }
+
+      // ── Update build menu & hotbar with placed building counts ──────
+      {
+        const counts = new Map<BuildingTypeKind, number>();
+        for (const entity of entityMap.values()) {
+          if (entity.kind !== 'Building') continue;
+          const data = (entity.data as { Building?: { building_type: BuildingTypeKind } }).Building;
+          if (!data) continue;
+          counts.set(data.building_type, (counts.get(data.building_type) ?? 0) + 1);
+        }
+        buildingCountsCache = counts;
+        buildMenu.setPlacedBuildingCounts(counts);
+        buildHotbar.setPlacedBuildingCounts(counts);
       }
 
       // ── Collect all light sources (player + buildings) ──────────────

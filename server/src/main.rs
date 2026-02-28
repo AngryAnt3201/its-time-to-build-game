@@ -1,4 +1,5 @@
 use its_time_to_build_server::ecs::components::*;
+use its_time_to_build_server::ecs::weapon_stats;
 use its_time_to_build_server::ecs::world::create_world;
 use its_time_to_build_server::ecs::systems::{agent_tick, agent_wander, building, combat, crank, economy, placement, spawn};
 use its_time_to_build_server::game::{agents, collision};
@@ -98,6 +99,13 @@ async fn main() {
         // Reset per-tick flags
         player_attacking = false;
 
+        // Decrement attack cooldown each tick
+        for (_id, combat) in world.query_mut::<hecs::With<&mut CombatPower, &Player>>() {
+            if combat.cooldown_remaining > 0 {
+                combat.cooldown_remaining -= 1;
+            }
+        }
+
         // Debug actions may generate log entries and remove entities
         let mut debug_log_entries: Vec<String> = Vec::new();
         let mut debug_entities_removed: Vec<EntityId> = Vec::new();
@@ -112,13 +120,15 @@ async fn main() {
             if len > 0.0 {
                 let norm_x = mx / len;
                 let norm_y = my / len;
-                let dx = norm_x * PLAYER_SPEED;
-                let dy = norm_y * PLAYER_SPEED;
 
-                for (_id, (pos, facing)) in world.query_mut::<hecs::With<(&mut Position, &mut Facing), &Player>>() {
+                for (_id, (pos, facing, armor)) in world.query_mut::<hecs::With<(&mut Position, &mut Facing, &Armor), &Player>>() {
+                    let effective_speed = PLAYER_SPEED * (1.0 - armor.speed_penalty);
                     // Update facing direction
                     facing.dx = norm_x;
                     facing.dy = norm_y;
+
+                    let dx = norm_x * effective_speed;
+                    let dy = norm_y * effective_speed;
 
                     // Check X axis independently (wall-sliding)
                     let future_tx = collision::pixel_to_tile(pos.x + dx);
@@ -141,6 +151,25 @@ async fn main() {
                 match action {
                     PlayerAction::Attack => {
                         player_attacking = true;
+                    }
+                    PlayerAction::EquipWeapon { weapon_id } => {
+                        if let Some(wtype) = weapon_stats::weapon_from_id(weapon_id) {
+                            let new_stats = weapon_stats::weapon_stats(wtype);
+                            for (_id, combat) in world.query_mut::<hecs::With<&mut CombatPower, &Player>>() {
+                                // Preserve current cooldown if mid-attack
+                                let old_cooldown = combat.cooldown_remaining;
+                                *combat = new_stats.clone();
+                                combat.cooldown_remaining = old_cooldown;
+                            }
+                        }
+                    }
+                    PlayerAction::EquipArmor { armor_id } => {
+                        if let Some(atype) = weapon_stats::armor_from_id(armor_id) {
+                            let new_armor = weapon_stats::armor_stats(atype);
+                            for (_id, armor) in world.query_mut::<hecs::With<&mut Armor, &Player>>() {
+                                *armor = new_armor.clone();
+                            }
+                        }
                     }
                     PlayerAction::CrankStart => {
                         player_cranking = true;

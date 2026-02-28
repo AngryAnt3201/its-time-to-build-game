@@ -85,6 +85,7 @@ pub enum AgentStateKind {
     Defending,
     Critical,
     Unresponsive,
+    Dormant,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,6 +121,10 @@ pub enum BuildingTypeKind {
 
     // Tier 4
     Blockchain,
+
+    // Home Base
+    TokenWheel,
+    CraftingTable,
 }
 
 // ── Rogue types ────────────────────────────────────────────────────
@@ -241,6 +246,8 @@ pub enum PlayerAction {
     CrankStart,
     CrankStop,
     RollbackAgent,
+    EquipWeapon { weapon_id: String },
+    EquipArmor { armor_id: String },
 
     // Debug actions
     DebugSetTokens { amount: i64 },

@@ -219,6 +219,8 @@ export type PlayerAction =
   | "CrankStart"
   | "CrankStop"
   | "RollbackAgent"
+  | { EquipWeapon: { weapon_id: string } }
+  | { EquipArmor: { armor_id: string } }
   // Debug actions
   | { DebugSetTokens: { amount: number } }
   | { DebugAddTokens: { amount: number } }
