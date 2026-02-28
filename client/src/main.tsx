@@ -1286,6 +1286,9 @@ async function startGame() {
       torchLight.y = pos.y;
 
       // Update entity renderer with changed/removed entities
+      if (state.project_manager?.building_grades) {
+        entityRenderer.setBuildingGrades(state.project_manager.building_grades);
+      }
       entityRenderer.update(state.entities_changed, state.entities_removed);
 
       // Maintain persistent entity map (update BEFORE light collection

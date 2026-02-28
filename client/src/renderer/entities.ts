@@ -1,5 +1,5 @@
 import { Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
-import type { EntityDelta, AgentStateKind, AgentTierKind, RogueTypeKind, ProjectileData } from '../network/protocol';
+import type { EntityDelta, AgentStateKind, AgentTierKind, RogueTypeKind, ProjectileData, BuildingGradeState } from '../network/protocol';
 
 // ── Internal sprite type ────────────────────────────────────────────
 
@@ -7,6 +7,8 @@ interface EntitySprite {
   container: Container;
   graphic: Graphics;
   label: Text;
+  /** Stars label shown below building name tags. */
+  starsLabel: Text;
   /** Sprite used for rogue skull icons (loaded async). */
   iconSprite: Sprite | null;
   /** Health bar graphics for rogues. */
@@ -127,6 +129,9 @@ export class EntityRenderer {
   readonly container: Container;
   private sprites: Map<number, EntitySprite> = new Map();
 
+  // Building grades for star display
+  private buildingGrades: Record<string, BuildingGradeState> = {};
+
   // Cached skull textures (loaded once)
   private skullTextures: Map<number, Texture> = new Map();
   private skullsLoaded = false;
@@ -140,6 +145,11 @@ export class EntityRenderer {
     this.container.label = 'entities';
     this.loadSkullIcons();
     this.loadAgentIcons();
+  }
+
+  /** Update the building grades map (called each tick from main). */
+  setBuildingGrades(grades: Record<string, BuildingGradeState>): void {
+    this.buildingGrades = grades;
   }
 
   // ── Load skull icon textures ──────────────────────────────────────
@@ -247,10 +257,20 @@ export class EntityRenderer {
     label.scale.set(1 / LABEL_RES);
     label.y = 10;
 
+    const starsLabel = new Text({
+      text: '',
+      style: makeLabelStyle(0xd4a017),
+    });
+    starsLabel.anchor.set(0.5, 0);
+    starsLabel.scale.set(1 / LABEL_RES);
+    starsLabel.y = 17;
+    starsLabel.visible = false;
+
     container.addChild(graphic);
     container.addChild(label);
+    container.addChild(starsLabel);
 
-    return { container, graphic, label, iconSprite: null, healthBarBg: null, healthBarFill: null };
+    return { container, graphic, label, starsLabel, iconSprite: null, healthBarBg: null, healthBarFill: null };
   }
 
   private drawAgent(
@@ -309,6 +329,7 @@ export class EntityRenderer {
 
     sprite.label.text = agent.name;
     sprite.label.style = makeLabelStyle(color);
+    sprite.starsLabel.visible = false;
 
     // Clean up rogue-specific elements (health bars)
     if (sprite.healthBarBg) sprite.healthBarBg.clear();
@@ -332,6 +353,22 @@ export class EntityRenderer {
 
     sprite.label.text = building.building_type;
     sprite.label.style = makeLabelStyle(BUILDING_COLOR);
+
+    // Show star rating below name if graded
+    const buildingId = building.building_type
+      .replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+    const grade = this.buildingGrades[buildingId];
+    if (grade && grade.stars > 0 && !grade.grading) {
+      let stars = '';
+      for (let i = 1; i <= 6; i++) {
+        stars += i <= grade.stars ? '\u2605' : '\u2606';
+      }
+      sprite.starsLabel.text = stars;
+      sprite.starsLabel.style = makeLabelStyle(0xd4a017);
+      sprite.starsLabel.visible = true;
+    } else {
+      sprite.starsLabel.visible = false;
+    }
 
     this.cleanRogueElements(sprite);
   }
@@ -406,6 +443,7 @@ export class EntityRenderer {
     const levelStars = '★'.repeat(level);
     sprite.label.text = `${levelStars} ${rogue.rogue_type}`;
     sprite.label.style = makeLabelStyle(color);
+    sprite.starsLabel.visible = false;
   }
 
   private drawItem(
@@ -446,5 +484,6 @@ export class EntityRenderer {
     if (sprite.healthBarFill) {
       sprite.healthBarFill.clear();
     }
+    // starsLabel is managed by drawBuilding — hide for non-buildings handled there
   }
 }
