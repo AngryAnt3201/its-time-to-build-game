@@ -1,3 +1,4 @@
+use crate::game::upgrades::UpgradeState;
 use crate::protocol::{AgentStateKind, AgentTierKind, BuildingTypeKind, RogueTypeKind, TaskAssignment};
 
 // ── Marker Components ────────────────────────────────────────────────
@@ -139,6 +140,18 @@ pub struct VoiceProfile {
 }
 
 #[derive(Debug, Clone)]
+pub struct AgentVibeConfig {
+    pub model_id: String,
+    pub model_lore_name: String,
+    pub max_turns: u32,
+    pub turns_used: u32,
+    pub context_window: u32,
+    pub token_burn_rate: i64,
+    pub error_chance_base: f32,
+    pub stars: u8,
+}
+
+#[derive(Debug, Clone)]
 pub struct Assignment {
     pub task: TaskAssignment,
 }
@@ -253,6 +266,9 @@ pub struct GameState {
     pub economy: TokenEconomy,
     pub cascade_active: bool,
     pub city_reached_tick: Option<u64>,
+    pub upgrades: UpgradeState,
+    pub spawning_enabled: bool,
+    pub god_mode: bool,
 }
 
 // ── Discovery Component ─────────────────────────────────────────────
