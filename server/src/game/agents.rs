@@ -2,8 +2,8 @@ use hecs::World;
 use rand::Rng;
 
 use crate::ecs::components::{
-    Agent, AgentMorale, AgentName, AgentState, AgentStats, AgentTier, AgentXP, Assignment,
-    Collider, Health, Position, TokenEconomy, Velocity, VoiceProfile,
+    Agent, AgentMorale, AgentName, AgentState, AgentStats, AgentTier, AgentVibeConfig, AgentXP,
+    Assignment, Collider, Health, Position, TokenEconomy, Velocity, VoiceProfile,
 };
 use crate::protocol::{AgentStateKind, AgentTierKind, TaskAssignment};
 
@@ -42,6 +42,52 @@ fn generate_stats(tier: AgentTierKind) -> AgentStats {
         speed: rng.gen_range(spd_min..=spd_max),
         awareness: rng.gen_range(awa_min..=awa_max),
         resilience: rng.gen_range(res_min..=res_max),
+    }
+}
+
+/// Generate the Vibe configuration for a given agent tier.
+fn generate_vibe_config(tier: AgentTierKind) -> AgentVibeConfig {
+    match tier {
+        AgentTierKind::Apprentice => AgentVibeConfig {
+            model_id: "ministral-3b-2025-01".to_string(),
+            model_lore_name: "Flickering Candle".to_string(),
+            max_turns: 5,
+            turns_used: 0,
+            context_window: 128_000,
+            token_burn_rate: 3,
+            error_chance_base: 0.15,
+            stars: 1,
+        },
+        AgentTierKind::Journeyman => AgentVibeConfig {
+            model_id: "ministral-8b-2025-01".to_string(),
+            model_lore_name: "Steady Flame".to_string(),
+            max_turns: 15,
+            turns_used: 0,
+            context_window: 128_000,
+            token_burn_rate: 2,
+            error_chance_base: 0.08,
+            stars: 2,
+        },
+        AgentTierKind::Artisan => AgentVibeConfig {
+            model_id: "codestral-2025-05".to_string(),
+            model_lore_name: "Codestral Engine".to_string(),
+            max_turns: 30,
+            turns_used: 0,
+            context_window: 256_000,
+            token_burn_rate: 1,
+            error_chance_base: 0.04,
+            stars: 3,
+        },
+        AgentTierKind::Architect => AgentVibeConfig {
+            model_id: "devstral-2-2025-07".to_string(),
+            model_lore_name: "Abyssal Architect".to_string(),
+            max_turns: 50,
+            turns_used: 0,
+            context_window: 256_000,
+            token_burn_rate: 1,
+            error_chance_base: 0.02,
+            stars: 3,
+        },
     }
 }
 
@@ -106,6 +152,7 @@ pub fn recruit_agent(
         VoiceProfile {
             voice_id: "placeholder".to_string(),
         },
+        generate_vibe_config(tier),
     ));
 
     Ok(entity)
@@ -285,5 +332,32 @@ mod tests {
 
         let state = world.get::<&AgentState>(entity).unwrap();
         assert_eq!(state.state, AgentStateKind::Building);
+    }
+
+    #[test]
+    fn recruited_apprentice_has_vibe_config() {
+        let mut world = World::new();
+        let mut economy = make_economy(100);
+        let entity =
+            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy).unwrap();
+
+        let vibe = world.get::<&AgentVibeConfig>(entity).unwrap();
+        assert_eq!(vibe.max_turns, 5);
+        assert_eq!(vibe.stars, 1);
+        assert_eq!(vibe.turns_used, 0);
+        assert_eq!(vibe.token_burn_rate, 3);
+    }
+
+    #[test]
+    fn recruited_architect_has_frontier_vibe_config() {
+        let mut world = World::new();
+        let mut economy = make_economy(500);
+        let entity =
+            recruit_agent(&mut world, AgentTierKind::Architect, 0.0, 0.0, &mut economy).unwrap();
+
+        let vibe = world.get::<&AgentVibeConfig>(entity).unwrap();
+        assert_eq!(vibe.max_turns, 50);
+        assert_eq!(vibe.stars, 3);
+        assert_eq!(vibe.model_lore_name, "Abyssal Architect");
     }
 }
