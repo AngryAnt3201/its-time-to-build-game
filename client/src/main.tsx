@@ -15,10 +15,23 @@ import { BuildMenu } from './ui/build-menu';
 import { UpgradeTree } from './ui/upgrade-tree';
 import { Grimoire } from './ui/grimoire';
 import { DebugPanel } from './ui/debug-panel';
+import { BuildingPanel } from './ui/building-panel';
 import { Minimap } from './ui/minimap';
-import type { GameStateUpdate, PlayerInput, PlayerAction } from './network/protocol';
+import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta } from './network/protocol';
 import { AudioManager } from './audio/manager';
 import { getProjectDir, getProjectInitFlag, setProjectInitFlag } from './utils/project-settings';
+
+/** Convert PascalCase building type to snake_case building ID. */
+function buildingTypeToId(type: string): string {
+  return type.replace(/([A-Z])/g, (_, p1: string, offset: number) =>
+    offset > 0 ? '_' + p1.toLowerCase() : p1.toLowerCase(),
+  );
+}
+
+/** Convert PascalCase building type to Title Case display name. */
+function buildingTypeToName(type: string): string {
+  return type.replace(/([A-Z])/g, ' $1').trim();
+}
 
 async function startGame() {
   // Hide the React overlay
@@ -54,6 +67,29 @@ async function startGame() {
   const grimoire = new Grimoire();
   const debugPanel = new DebugPanel();
   const minimap = new Minimap();
+
+  // ── Persistent entity map (tracks buildings across ticks) ─────────
+  const entityMap: Map<number, EntityDelta> = new Map();
+
+  // ── Building interaction panel ────────────────────────────────────
+  // Connection is not yet created here, so we use a forwarding closure
+  // that captures the variable once it's assigned below.
+  let connectionRef: Connection | null = null;
+  let clientTickRef = 0;
+
+  const buildingPanel = new BuildingPanel({
+    onAction: (action) => {
+      connectionRef?.sendInput({
+        tick: clientTickRef,
+        movement: { x: 0, y: 0 },
+        action,
+        target: null,
+      });
+    },
+    onClose: () => {
+      // Nothing needed — panel manages its own visibility
+    },
+  });
 
   // ── Audio system ──────────────────────────────────────────────────
   const audioManager = new AudioManager();
@@ -149,6 +185,7 @@ async function startGame() {
 
   // ── Network connection ──────────────────────────────────────────
   const connection = new Connection('ws://127.0.0.1:9001');
+  connectionRef = connection;
 
   // Track the latest server state
   let latestState: GameStateUpdate | null = null;
@@ -318,6 +355,16 @@ async function startGame() {
       return;
     }
 
+    // ── Building panel key handling ─────────────────────────────────
+    if (buildingPanel.visible) {
+      if (key === 'escape') {
+        buildingPanel.close();
+        return;
+      }
+      // While building panel is open, consume all keys
+      return;
+    }
+
     // ── Grimoire key handling (intercept before other menus) ──────
     if (key === 'g' && !buildMenu.visible && !upgradeTree.visible) {
       grimoire.toggle();
@@ -444,9 +491,10 @@ async function startGame() {
   // ── Game loop (runs every frame via PixiJS ticker) ──────────────
   app.ticker.add(() => {
     clientTick++;
+    clientTickRef = clientTick;
 
     // Block movement and actions while any overlay is open
-    const menuBlocking = buildMenu.visible || upgradeTree.visible || grimoire.visible || debugPanel.visible || minimap.expanded;
+    const menuBlocking = buildMenu.visible || upgradeTree.visible || grimoire.visible || debugPanel.visible || minimap.expanded || buildingPanel.visible;
 
     // Build movement vector from pressed keys
     const movement = { x: 0, y: 0 };
@@ -467,8 +515,36 @@ async function startGame() {
       }
 
       if (justPressed.has('e')) {
-        crankActive = !crankActive;
-        action = crankActive ? 'CrankStart' : 'CrankStop';
+        // Check for a nearby completed building to interact with
+        let interactedWithBuilding = false;
+        const px = player.x;
+        const py = player.y;
+        let nearestDist = 48; // interaction range in world pixels
+        let nearestType = '';
+        for (const entity of entityMap.values()) {
+          if (entity.kind !== 'Building') continue;
+          const data = (entity.data as { Building?: { building_type: string; construction_pct: number } }).Building;
+          if (!data || data.construction_pct < 1.0) continue;
+          const dx = entity.position.x - px;
+          const dy = entity.position.y - py;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestType = data.building_type;
+          }
+        }
+        if (nearestType) {
+          const buildingId = buildingTypeToId(nearestType);
+          const name = buildingTypeToName(nearestType);
+          const status = latestState?.project_manager?.building_statuses?.[buildingId] ?? 'NotInitialized';
+          buildingPanel.open(buildingId, name, `Building: ${name}`, status);
+          interactedWithBuilding = true;
+        }
+
+        if (!interactedWithBuilding) {
+          crankActive = !crankActive;
+          action = crankActive ? 'CrankStart' : 'CrankStop';
+        }
       }
     }
 
@@ -554,6 +630,14 @@ async function startGame() {
       // Update entity renderer with changed/removed entities
       entityRenderer.update(state.entities_changed, state.entities_removed);
 
+      // Maintain persistent entity map (used for building proximity checks)
+      for (const entity of state.entities_changed) {
+        entityMap.set(entity.id, entity);
+      }
+      for (const removedId of state.entities_removed) {
+        entityMap.delete(removedId);
+      }
+
       // Update grimoire with agent data from entity deltas
       grimoire.update(state.entities_changed);
 
@@ -583,6 +667,19 @@ async function startGame() {
 
       // Update minimap with player position and all known entities
       minimap.update(pos.x, pos.y, state.entities_changed, state.entities_removed);
+
+      // ── Project manager state: feed unlock & status data ────────
+      if (state.project_manager) {
+        // Update build menu with unlocked building list
+        buildMenu.setUnlockedBuildings(state.project_manager.unlocked_buildings);
+
+        // Live-update the building panel if it is open
+        if (buildingPanel.visible && buildingPanel.currentBuildingId) {
+          const currentId = buildingPanel.currentBuildingId;
+          const status = state.project_manager.building_statuses[currentId] ?? 'NotInitialized';
+          buildingPanel.updateStatus(status);
+        }
+      }
 
       previousTick = state.tick;
     }

@@ -42,8 +42,13 @@ export class BuildingPanel {
 
   private readonly callbacks: BuildingPanelCallbacks;
 
-  private currentBuildingId: string | null = null;
+  private _currentBuildingId: string | null = null;
   private currentPort: number | null = null;
+
+  /** The building ID currently displayed in the panel (null when closed). */
+  get currentBuildingId(): string | null {
+    return this._currentBuildingId;
+  }
 
   constructor(callbacks: BuildingPanelCallbacks) {
     this.callbacks = callbacks;
@@ -166,7 +171,7 @@ export class BuildingPanel {
    * @param status One of: "NotInitialized", "Ready", "Running:PORT", "Error:MSG"
    */
   open(buildingId: string, name: string, description: string, status: string): void {
-    this.currentBuildingId = buildingId;
+    this._currentBuildingId = buildingId;
     this.currentPort = null;
     this.titleEl.textContent = name;
     this.descriptionEl.textContent = description;
@@ -180,7 +185,7 @@ export class BuildingPanel {
     this.container.style.display = 'none';
     this.visible = false;
     this.iframe.src = 'about:blank';
-    this.currentBuildingId = null;
+    this._currentBuildingId = null;
     this.currentPort = null;
     this.callbacks.onClose();
   }
