@@ -1,71 +1,14 @@
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import type { BuildingTypeKind } from '../network/protocol';
+import {
+  getBuildingsForPage,
+  getPageTitle,
+  TOTAL_PAGES,
+  buildingTypeToId,
+  type BuildingDef,
+} from '../data/buildings';
 
-// ── Style constants ──────────────────────────────────────────────────
-
-const FONT_FAMILY = '"IBM Plex Mono", monospace';
-
-const titleStyle = new TextStyle({
-  fontFamily: FONT_FAMILY,
-  fontSize: 18,
-  fontWeight: 'bold',
-  fill: 0xd4a017, // amber
-});
-
-const nameStyle = new TextStyle({
-  fontFamily: FONT_FAMILY,
-  fontSize: 14,
-  fill: 0xd4a017, // amber
-});
-
-const costStyle = new TextStyle({
-  fontFamily: FONT_FAMILY,
-  fontSize: 12,
-  fill: 0x888888, // grey
-});
-
-const descStyle = new TextStyle({
-  fontFamily: FONT_FAMILY,
-  fontSize: 11,
-  fontStyle: 'italic',
-  fill: 0x666666, // darker grey
-});
-
-const instructionStyle = new TextStyle({
-  fontFamily: FONT_FAMILY,
-  fontSize: 10,
-  fill: 0x555555,
-});
-
-const lockedNameStyle = new TextStyle({
-  fontFamily: FONT_FAMILY,
-  fontSize: 14,
-  fill: 0x555555, // dark grey
-});
-
-const lockedCostStyle = new TextStyle({
-  fontFamily: FONT_FAMILY,
-  fontSize: 12,
-  fill: 0x444444,
-});
-
-const lockedDescStyle = new TextStyle({
-  fontFamily: FONT_FAMILY,
-  fontSize: 11,
-  fontStyle: 'italic',
-  fill: 0x444444,
-});
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-/** Convert PascalCase building type to snake_case ID (e.g. "TodoApp" -> "todo_app"). */
-function buildingTypeToId(type: string): string {
-  return type.replace(/([A-Z])/g, (match, p1, offset) =>
-    offset > 0 ? '_' + p1.toLowerCase() : p1.toLowerCase()
-  );
-}
-
-// ── Building data ────────────────────────────────────────────────────
+// ── Re-export for compatibility with hotbar ─────────────────────────
 
 export interface BuildingEntry {
   type: BuildingTypeKind;
@@ -75,73 +18,95 @@ export interface BuildingEntry {
   tier: number;
 }
 
-/** Tier 1 buildings available from the start. */
-const TIER1_BUILDINGS: BuildingEntry[] = [
-  {
-    type: 'Pylon',
-    name: 'Pylon',
-    cost: 30,
-    description: 'Illuminates surrounding area',
-    tier: 0,
-  },
-  {
-    type: 'ComputeFarm',
-    name: 'Compute Farm',
-    cost: 80,
-    description: 'Passive token generation',
-    tier: 0,
-  },
-  {
-    type: 'TodoApp',
-    name: 'Todo App',
-    cost: 15,
-    description: 'task: survive. status: in progress.',
-    tier: 1,
-  },
-  {
-    type: 'Calculator',
-    name: 'Calculator',
-    cost: 20,
-    description: 'Projected income display',
-    tier: 1,
-  },
-  {
-    type: 'LandingPage',
-    name: 'Landing Page',
-    cost: 25,
-    description: 'Agent morale boost',
-    tier: 1,
-  },
-  {
-    type: 'PortfolioSite',
-    name: 'Portfolio Site',
-    cost: 30,
-    description: 'Early income',
-    tier: 1,
-  },
-  {
-    type: 'PomodoroTimer',
-    name: 'Pomodoro Timer',
-    cost: 20,
-    description: 'Reduces crank heat',
-    tier: 1,
-  },
-];
+// ── Style constants ─────────────────────────────────────────────────
 
-// ── Layout constants ─────────────────────────────────────────────────
+const FONT_FAMILY = '"IBM Plex Mono", monospace';
 
-const PANEL_WIDTH = 400;
-const PANEL_HEIGHT = 500;
-const ROW_HEIGHT = 54;
-const SCROLL_PADDING = 50; // space for title + instructions
-const VISIBLE_ROWS = 7;
+const titleStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 16,
+  fontWeight: 'bold',
+  fill: 0xd4a017,
+});
+
+const pageNavStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 14,
+  fontWeight: 'bold',
+  fill: 0xd4a017,
+});
+
+const pageTitleStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 13,
+  fontWeight: 'bold',
+  fill: 0xc89b15,
+});
+
+const cardNameStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 11,
+  fill: 0xd4a017,
+  align: 'center',
+  wordWrap: true,
+  wordWrapWidth: 100,
+});
+
+const cardCostStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 9,
+  fill: 0x6a6a5a,
+  align: 'center',
+});
+
+const cardLockedNameStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 11,
+  fill: 0x555555,
+  align: 'center',
+  wordWrap: true,
+  wordWrapWidth: 100,
+});
+
+const cardLockedCostStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 9,
+  fill: 0x444444,
+  align: 'center',
+});
+
+const cardLockedLabelStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 8,
+  fill: 0x8b4444,
+  align: 'center',
+});
+
+const footerStyle = new TextStyle({
+  fontFamily: FONT_FAMILY,
+  fontSize: 10,
+  fill: 0x555555,
+});
+
+// ── Layout constants ────────────────────────────────────────────────
+
+const PANEL_WIDTH = 520;
+const PANEL_HEIGHT = 420;
+const CARD_W = 110;
+const CARD_H = 72;
+const CARD_GAP = 8;
+const COLS = 4;
+
+const HEADER_HEIGHT = 40;
+const FOOTER_HEIGHT = 30;
+const GRID_LEFT = 16;
+const GRID_TOP = HEADER_HEIGHT + 8;
 
 /**
- * Build menu overlay.
+ * Paginated grid-based building browser.
  *
- * Toggle with B key. Shows available buildings grouped by tier with
- * costs and descriptions. Select a building, then click on the game
- * world to place it.
+ * Toggle with B key. Shows all buildings organized by tier across 4 pages.
+ * Navigate with arrow keys, confirm with Enter, close with Esc/B.
  */
 export class BuildMenu {
   readonly container: Container;
@@ -159,15 +124,18 @@ export class BuildMenu {
   onPlace: ((buildingType: BuildingTypeKind, x: number, y: number) => void) | null = null;
 
   private selectedIndex = 0;
-  private scrollOffset = 0;
-  private buildings: BuildingEntry[] = TIER1_BUILDINGS;
+  private currentPage = 1;
   private unlockedBuildings: Set<string> = new Set();
 
   // Panel elements
   private panel: Graphics;
   private titleText: Text;
-  private instructionText: Text;
-  private rowContainers: Container[] = [];
+  private pageNavLeft: Text;
+  private pageNavRight: Text;
+  private pageTitleText: Text;
+  private footerText: Text;
+  private cardContainers: Container[] = [];
+  private gridContainer: Container;
 
   // Ghost preview
   private ghost: Graphics;
@@ -177,32 +145,47 @@ export class BuildMenu {
     this.container.label = 'build-menu';
     this.container.visible = false;
 
-    // ── Panel background ──────────────────────────────────────────
+    // ── Panel background ────────────────────────────────────────
     this.panel = new Graphics();
     this.container.addChild(this.panel);
 
-    // ── Title ─────────────────────────────────────────────────────
+    // ── Title (top-left) ────────────────────────────────────────
     this.titleText = new Text({ text: 'BUILD', style: titleStyle });
     this.titleText.x = 16;
-    this.titleText.y = 12;
+    this.titleText.y = 10;
     this.container.addChild(this.titleText);
 
-    // ── Instructions at bottom ────────────────────────────────────
-    this.instructionText = new Text({
-      text: '[Up/Down] select   [Enter] place   [Esc/B] close',
-      style: instructionStyle,
-    });
-    this.instructionText.x = 16;
-    this.container.addChild(this.instructionText);
+    // ── Page navigation arrows + tier title (header center/right) ──
+    this.pageNavLeft = new Text({ text: '\u25C4', style: pageNavStyle });
+    this.pageNavLeft.y = 11;
+    this.container.addChild(this.pageNavLeft);
 
-    // ── Ghost preview (for placement mode) ────────────────────────
+    this.pageTitleText = new Text({ text: '', style: pageTitleStyle });
+    this.pageTitleText.y = 12;
+    this.container.addChild(this.pageTitleText);
+
+    this.pageNavRight = new Text({ text: '\u25BA', style: pageNavStyle });
+    this.pageNavRight.y = 11;
+    this.container.addChild(this.pageNavRight);
+
+    // ── Grid container ──────────────────────────────────────────
+    this.gridContainer = new Container();
+    this.gridContainer.x = GRID_LEFT;
+    this.gridContainer.y = GRID_TOP;
+    this.container.addChild(this.gridContainer);
+
+    // ── Footer ──────────────────────────────────────────────────
+    this.footerText = new Text({ text: '', style: footerStyle });
+    this.footerText.x = 16;
+    this.container.addChild(this.footerText);
+
+    // ── Ghost preview (for placement mode) ──────────────────────
     this.ghost = new Graphics();
     this.ghost.visible = false;
-    // Ghost is added to the world container by main.ts, not here
 
-    // ── Build the initial row display ─────────────────────────────
-    this.rebuildRows();
-    this.layoutPanel();
+    // ── Build the initial display ───────────────────────────────
+    this.drawPanel();
+    this.rebuildPage();
   }
 
   /** The ghost graphic, to be added to the world container by the caller. */
@@ -210,12 +193,17 @@ export class BuildMenu {
     return this.ghost;
   }
 
+  /** Returns true if the menu is blocking normal input. */
+  get isBlocking(): boolean {
+    return this.visible || this.placementMode;
+  }
+
   // ── Public API ──────────────────────────────────────────────────
 
   /** Update which buildings are unlocked (called when server sends state). */
   setUnlockedBuildings(ids: string[]): void {
     this.unlockedBuildings = new Set(ids);
-    this.rebuildRows();
+    this.rebuildPage();
   }
 
   /** Toggle the menu open/closed. */
@@ -228,8 +216,8 @@ export class BuildMenu {
     this.container.visible = this.visible;
     if (this.visible) {
       this.selectedIndex = 0;
-      this.scrollOffset = 0;
-      this.highlightSelected();
+      this.currentPage = 1;
+      this.rebuildPage();
     }
   }
 
@@ -239,8 +227,8 @@ export class BuildMenu {
     this.visible = true;
     this.container.visible = true;
     this.selectedIndex = 0;
-    this.scrollOffset = 0;
-    this.highlightSelected();
+    this.currentPage = 1;
+    this.rebuildPage();
   }
 
   /** Close the menu and cancel any placement mode. */
@@ -250,39 +238,113 @@ export class BuildMenu {
     this.cancelPlacement();
   }
 
-  /** Move selection up. */
+  /** Move selection up by one row (COLS items). */
   selectPrev(): void {
     if (!this.visible) return;
-    this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-    if (this.selectedIndex < this.scrollOffset) {
-      this.scrollOffset = this.selectedIndex;
+    const buildings = getBuildingsForPage(this.currentPage);
+    if (buildings.length === 0) return;
+
+    const newIndex = this.selectedIndex - COLS;
+    if (newIndex >= 0) {
+      this.selectedIndex = newIndex;
+      this.highlightSelected();
     }
-    this.highlightSelected();
   }
 
-  /** Move selection down. */
+  /** Move selection down by one row (COLS items). */
   selectNext(): void {
     if (!this.visible) return;
-    this.selectedIndex = Math.min(this.buildings.length - 1, this.selectedIndex + 1);
-    if (this.selectedIndex >= this.scrollOffset + VISIBLE_ROWS) {
-      this.scrollOffset = this.selectedIndex - VISIBLE_ROWS + 1;
+    const buildings = getBuildingsForPage(this.currentPage);
+    if (buildings.length === 0) return;
+
+    const newIndex = this.selectedIndex + COLS;
+    if (newIndex < buildings.length) {
+      this.selectedIndex = newIndex;
+      this.highlightSelected();
     }
-    this.highlightSelected();
+  }
+
+  /** Move selection left by one. If at left edge, go to previous page. */
+  selectLeft(): void {
+    if (!this.visible) return;
+    const col = this.selectedIndex % COLS;
+    if (col === 0) {
+      // At left edge — go to previous page, select last item
+      if (this.currentPage > 1) {
+        this.currentPage--;
+        const buildings = getBuildingsForPage(this.currentPage);
+        this.selectedIndex = Math.max(0, buildings.length - 1);
+        this.rebuildPage();
+      }
+    } else {
+      this.selectedIndex--;
+      this.highlightSelected();
+    }
+  }
+
+  /** Move selection right by one. If at right edge, go to next page. */
+  selectRight(): void {
+    if (!this.visible) return;
+    const buildings = getBuildingsForPage(this.currentPage);
+    if (buildings.length === 0) return;
+
+    const col = this.selectedIndex % COLS;
+    const isLastOnRow = col === COLS - 1;
+    const isLastItem = this.selectedIndex === buildings.length - 1;
+
+    if (isLastOnRow || isLastItem) {
+      // At right edge — go to next page, select first item
+      if (this.currentPage < TOTAL_PAGES) {
+        this.currentPage++;
+        this.selectedIndex = 0;
+        this.rebuildPage();
+      }
+    } else {
+      this.selectedIndex++;
+      this.highlightSelected();
+    }
+  }
+
+  /** Go to the next tier page. */
+  nextPage(): void {
+    if (!this.visible) return;
+    if (this.currentPage < TOTAL_PAGES) {
+      this.currentPage++;
+      this.selectedIndex = 0;
+      this.rebuildPage();
+    }
+  }
+
+  /** Go to the previous tier page. */
+  prevPage(): void {
+    if (!this.visible) return;
+    if (this.currentPage > 1) {
+      this.currentPage--;
+      this.selectedIndex = 0;
+      this.rebuildPage();
+    }
   }
 
   /** Confirm selection and enter placement mode. */
   confirmSelection(): void {
     if (!this.visible) return;
-    const building = this.buildings[this.selectedIndex];
+    const buildings = getBuildingsForPage(this.currentPage);
+    const building = buildings[this.selectedIndex];
     if (!building) return;
 
     // Prevent placement of locked buildings
     const buildingId = buildingTypeToId(building.type);
     if (this.unlockedBuildings.size > 0 && !this.unlockedBuildings.has(buildingId)) {
-      return; // Can't place locked buildings
+      return;
     }
 
-    this.placementBuilding = building;
+    this.placementBuilding = {
+      type: building.type,
+      name: building.name,
+      cost: building.cost,
+      description: building.description,
+      tier: building.tier,
+    };
     this.placementMode = true;
     this.visible = false;
     this.container.visible = false;
@@ -321,126 +383,192 @@ export class BuildMenu {
     this.ghost.visible = false;
   }
 
-  /** Returns true if the menu is blocking normal input. */
-  get isBlocking(): boolean {
-    return this.visible || this.placementMode;
-  }
-
   /** Reposition the panel for the current screen size. */
   resize(screenWidth: number, screenHeight: number): void {
     this.container.x = Math.round((screenWidth - PANEL_WIDTH) / 2);
     this.container.y = Math.round((screenHeight - PANEL_HEIGHT) / 2);
   }
 
-  // ── Private helpers ─────────────────────────────────────────────
+  // ── Private helpers ───────────────────────────────────────────────
 
-  private layoutPanel(): void {
+  private drawPanel(): void {
     this.panel.clear();
     this.panel.roundRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT, 4);
-    this.panel.fill({ color: 0x1a1510, alpha: 0.9 });
+    this.panel.fill({ color: 0x1a1510, alpha: 0.95 });
     this.panel.roundRect(0, 0, PANEL_WIDTH, PANEL_HEIGHT, 4);
     this.panel.stroke({ color: 0x3a3020, alpha: 0.8, width: 1 });
 
-    this.instructionText.y = PANEL_HEIGHT - 24;
+    this.footerText.y = PANEL_HEIGHT - FOOTER_HEIGHT + 4;
   }
 
-  private rebuildRows(): void {
-    // Remove old rows
-    for (const row of this.rowContainers) {
-      this.container.removeChild(row);
-      row.destroy({ children: true });
+  private rebuildPage(): void {
+    // Remove old cards
+    for (const card of this.cardContainers) {
+      this.gridContainer.removeChild(card);
+      card.destroy({ children: true });
     }
-    this.rowContainers = [];
+    this.cardContainers = [];
 
-    // Create rows for each building
-    for (let i = 0; i < this.buildings.length; i++) {
-      const building = this.buildings[i];
-      const row = new Container();
-      row.label = `build-row-${i}`;
+    const buildings = getBuildingsForPage(this.currentPage);
 
-      // Determine lock state
-      const buildingId = buildingTypeToId(building.type);
-      const isLocked =
-        this.unlockedBuildings.size > 0 && !this.unlockedBuildings.has(buildingId);
+    // Update header: page title and nav arrows
+    const pageTitle = getPageTitle(this.currentPage);
+    this.pageTitleText.text = pageTitle;
 
-      // Row background (for highlighting)
-      const bg = new Graphics();
-      bg.label = 'row-bg';
-      bg.rect(0, 0, PANEL_WIDTH - 16, ROW_HEIGHT - 4);
-      bg.fill({ color: 0x2a2010, alpha: 0 });
-      row.addChild(bg);
+    // Position nav elements centered in the right portion of the header
+    const navCenterX = PANEL_WIDTH / 2 + 60;
+    this.pageTitleText.x = navCenterX - this.pageTitleText.width / 2;
+    this.pageNavLeft.x = this.pageTitleText.x - 24;
+    this.pageNavRight.x = this.pageTitleText.x + this.pageTitleText.width + 10;
 
-      // Building name
-      const displayName = isLocked ? `${building.name} [LOCKED]` : building.name;
-      const name = new Text({
-        text: displayName,
-        style: isLocked ? lockedNameStyle : nameStyle,
-      });
-      name.x = 8;
-      name.y = 4;
-      row.addChild(name);
+    // Dim arrows at bounds
+    this.pageNavLeft.alpha = this.currentPage > 1 ? 1.0 : 0.3;
+    this.pageNavRight.alpha = this.currentPage < TOTAL_PAGES ? 1.0 : 0.3;
 
-      // Cost
-      const cost = new Text({
-        text: `${building.cost} tokens`,
-        style: isLocked ? lockedCostStyle : costStyle,
-      });
-      cost.x = PANEL_WIDTH - 120;
-      cost.y = 6;
-      row.addChild(cost);
+    // Update footer
+    this.footerText.text = `[\u2191\u2193\u2190\u2192] navigate  [Enter] build  [Esc] close  Page ${this.currentPage}/${TOTAL_PAGES}`;
 
-      // Description
-      const desc = new Text({
-        text: building.description,
-        style: isLocked ? lockedDescStyle : descStyle,
-      });
-      desc.x = 8;
-      desc.y = 24;
-      row.addChild(desc);
+    // Clamp selected index
+    if (this.selectedIndex >= buildings.length) {
+      this.selectedIndex = Math.max(0, buildings.length - 1);
+    }
 
-      row.x = 8;
-      row.y = SCROLL_PADDING + i * ROW_HEIGHT;
+    // Create cards
+    for (let i = 0; i < buildings.length; i++) {
+      const building = buildings[i];
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
 
-      this.container.addChild(row);
-      this.rowContainers.push(row);
+      const card = this.createCard(building, i);
+      card.x = col * (CARD_W + CARD_GAP);
+      card.y = row * (CARD_H + CARD_GAP);
+      this.gridContainer.addChild(card);
+      this.cardContainers.push(card);
     }
 
     this.highlightSelected();
   }
 
-  /** Check if a building at a given index is locked. */
-  private isBuildingLocked(index: number): boolean {
+  private createCard(building: BuildingDef, index: number): Container {
+    const card = new Container();
+    card.label = `card-${index}`;
+
+    const buildingId = buildingTypeToId(building.type);
+    const isLocked =
+      this.unlockedBuildings.size > 0 && !this.unlockedBuildings.has(buildingId);
+
+    // Card background
+    const bg = new Graphics();
+    bg.label = 'card-bg';
+    bg.roundRect(0, 0, CARD_W, CARD_H, 3);
+    bg.fill({ color: 0x141210, alpha: 1 });
+    bg.roundRect(0, 0, CARD_W, CARD_H, 3);
+    bg.stroke({ color: 0x2a2418, alpha: 1, width: 1 });
+    card.addChild(bg);
+
+    // Building name
+    const nameText = new Text({
+      text: building.name,
+      style: isLocked ? cardLockedNameStyle : cardNameStyle,
+    });
+    nameText.anchor.set(0.5, 0);
+    nameText.x = CARD_W / 2;
+    nameText.y = 8;
+    card.addChild(nameText);
+
+    // Cost
+    const costText = new Text({
+      text: `${building.cost}\u25C6`,
+      style: isLocked ? cardLockedCostStyle : cardCostStyle,
+    });
+    costText.anchor.set(0.5, 0);
+    costText.x = CARD_W / 2;
+    costText.y = isLocked ? 36 : 40;
+    card.addChild(costText);
+
+    // Locked label
+    if (isLocked) {
+      const lockedText = new Text({
+        text: '[LOCKED]',
+        style: cardLockedLabelStyle,
+      });
+      lockedText.anchor.set(0.5, 0);
+      lockedText.x = CARD_W / 2;
+      lockedText.y = 54;
+      card.addChild(lockedText);
+    }
+
+    return card;
+  }
+
+  private isBuildingLocked(pageIndex: number): boolean {
+    const buildings = getBuildingsForPage(this.currentPage);
     if (this.unlockedBuildings.size === 0) return false;
-    const building = this.buildings[index];
+    const building = buildings[pageIndex];
     if (!building) return false;
     return !this.unlockedBuildings.has(buildingTypeToId(building.type));
   }
 
   private highlightSelected(): void {
-    for (let i = 0; i < this.rowContainers.length; i++) {
-      const row = this.rowContainers[i];
-      const bg = row.getChildByLabel('row-bg') as Graphics | null;
+    for (let i = 0; i < this.cardContainers.length; i++) {
+      const card = this.cardContainers[i];
+      const bg = card.getChildByLabel('card-bg') as Graphics | null;
       if (!bg) continue;
 
       bg.clear();
+
       if (i === this.selectedIndex) {
         const locked = this.isBuildingLocked(i);
-        bg.rect(0, 0, PANEL_WIDTH - 16, ROW_HEIGHT - 4);
-        bg.fill({ color: locked ? 0x1a1010 : 0x2a2010, alpha: 0.6 });
-        bg.rect(0, 0, PANEL_WIDTH - 16, ROW_HEIGHT - 4);
+        // Selected card: bright border, slightly brighter fill
+        bg.roundRect(0, 0, CARD_W, CARD_H, 3);
+        bg.fill({ color: locked ? 0x1a1210 : 0x1e1a14, alpha: 1 });
+        bg.roundRect(0, 0, CARD_W, CARD_H, 3);
         bg.stroke({
           color: locked ? 0x552222 : 0xd4a017,
-          alpha: 0.8,
-          width: 1,
+          alpha: 1,
+          width: 2,
         });
-      } else {
-        bg.rect(0, 0, PANEL_WIDTH - 16, ROW_HEIGHT - 4);
-        bg.fill({ color: 0x2a2010, alpha: 0 });
-      }
 
-      // Offset row positions based on scroll
-      row.y = SCROLL_PADDING + (i - this.scrollOffset) * ROW_HEIGHT;
-      row.visible = i >= this.scrollOffset && i < this.scrollOffset + VISIBLE_ROWS;
+        // Corner brackets on selected card
+        this.drawCornerBrackets(bg, locked);
+      } else {
+        bg.roundRect(0, 0, CARD_W, CARD_H, 3);
+        bg.fill({ color: 0x141210, alpha: 1 });
+        bg.roundRect(0, 0, CARD_W, CARD_H, 3);
+        bg.stroke({ color: 0x2a2418, alpha: 1, width: 1 });
+      }
     }
+  }
+
+  private drawCornerBrackets(g: Graphics, locked: boolean): void {
+    const color = locked ? 0x552222 : 0xd4a017;
+    const len = 6;
+    const inset = -2;
+    const w = CARD_W;
+    const h = CARD_H;
+
+    // Top-left
+    g.moveTo(inset, inset + len);
+    g.lineTo(inset, inset);
+    g.lineTo(inset + len, inset);
+    g.stroke({ color, alpha: 0.8, width: 1 });
+
+    // Top-right
+    g.moveTo(w - inset - len, inset);
+    g.lineTo(w - inset, inset);
+    g.lineTo(w - inset, inset + len);
+    g.stroke({ color, alpha: 0.8, width: 1 });
+
+    // Bottom-left
+    g.moveTo(inset, h - inset - len);
+    g.lineTo(inset, h - inset);
+    g.lineTo(inset + len, h - inset);
+    g.stroke({ color, alpha: 0.8, width: 1 });
+
+    // Bottom-right
+    g.moveTo(w - inset - len, h - inset);
+    g.lineTo(w - inset, h - inset);
+    g.lineTo(w - inset, h - inset - len);
+    g.stroke({ color, alpha: 0.8, width: 1 });
   }
 }
