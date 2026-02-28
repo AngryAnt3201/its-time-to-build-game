@@ -556,3 +556,69 @@
   transform: translateY(1px);
   box-shadow: none;
 }
+
+/* ── Settings divider ─────────────────────────────────── */
+
+.settings-divider {
+  height: 1px;
+  margin: 20px 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--panel-border),
+    transparent
+  );
+}
+
+/* ── Input hint text ──────────────────────────────────── */
+
+.input-hint {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  margin-bottom: 8px;
+  letter-spacing: 0.04em;
+  font-family: 'IBM Plex Mono', monospace;
+  line-height: 1.5;
+}
+
+/* ── Settings action buttons row ──────────────────────── */
+
+.settings-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 9px 12px;
+  background: var(--gold-ghost);
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  color: var(--gold);
+  border-color: var(--gold-dim);
+  box-shadow: 0 0 10px var(--gold-ghost);
+}
+
+.action-btn:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.action-btn--reset:hover {
+  color: var(--crimson);
+  border-color: var(--crimson-dim);
+  box-shadow: 0 0 10px rgba(139, 32, 32, 0.15);
+}

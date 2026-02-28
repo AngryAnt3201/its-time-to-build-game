@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getApiKey, setApiKey } from '../../utils/api-keys';
+import { getProjectDir, setProjectDir, setProjectInitFlag } from '../../utils/project-settings';
 
 interface SettingsModalProps {
   open: boolean;
@@ -10,6 +11,7 @@ interface SettingsModalProps {
 export function SettingsModal({ open, onClose, onClickSound }: SettingsModalProps) {
   const [mistralKey, setMistralKey] = useState('');
   const [elevenlabsKey, setElevenlabsKey] = useState('');
+  const [projectDirValue, setProjectDirValue] = useState('');
   const [showMistral, setShowMistral] = useState(false);
   const [showElevenlabs, setShowElevenlabs] = useState(false);
 
@@ -17,6 +19,7 @@ export function SettingsModal({ open, onClose, onClickSound }: SettingsModalProp
     if (open) {
       setMistralKey(getApiKey('mistral') ?? '');
       setElevenlabsKey(getApiKey('elevenlabs') ?? '');
+      setProjectDirValue(getProjectDir() ?? '');
       setShowMistral(false);
       setShowElevenlabs(false);
     }
@@ -37,7 +40,22 @@ export function SettingsModal({ open, onClose, onClickSound }: SettingsModalProp
     onClickSound?.();
     setApiKey('mistral', mistralKey);
     setApiKey('elevenlabs', elevenlabsKey);
+    setProjectDir(projectDirValue);
     onClose();
+  }
+
+  function handleInitProjects() {
+    onClickSound?.();
+    setProjectInitFlag(true);
+  }
+
+  function handleResetProjects() {
+    onClickSound?.();
+    if (confirm('Reset all projects? This will delete generated code in the project directory.')) {
+      setProjectInitFlag(false);
+      // Send ResetProjects on next game start by setting a reset flag
+      localStorage.setItem('project_should_reset', 'true');
+    }
   }
 
   function handleBackdropClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -109,6 +127,40 @@ export function SettingsModal({ open, onClose, onClickSound }: SettingsModalProp
               {showElevenlabs ? 'HIDE' : 'SHOW'}
             </button>
           </div>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="input-group">
+          <label>Project Directory</label>
+          <span className="input-hint">
+            Base directory where building code projects will be created
+          </span>
+          <input
+            type="text"
+            value={projectDirValue}
+            onChange={(e) => setProjectDirValue(e.target.value)}
+            placeholder="/home/user/projects"
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="settings-actions">
+          <button
+            className="action-btn action-btn--init"
+            onClick={handleInitProjects}
+            type="button"
+          >
+            Initialize Projects
+          </button>
+          <button
+            className="action-btn action-btn--reset"
+            onClick={handleResetProjects}
+            type="button"
+          >
+            Reset All Projects
+          </button>
         </div>
 
         <button className="save-btn" onClick={handleSave}>

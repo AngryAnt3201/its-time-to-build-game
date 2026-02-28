@@ -18,6 +18,7 @@ import { DebugPanel } from './ui/debug-panel';
 import { Minimap } from './ui/minimap';
 import type { GameStateUpdate, PlayerInput, PlayerAction } from './network/protocol';
 import { AudioManager } from './audio/manager';
+import { getProjectDir, getProjectInitFlag, setProjectInitFlag } from './utils/project-settings';
 
 async function startGame() {
   // Hide the React overlay
@@ -110,6 +111,7 @@ async function startGame() {
   uiContainer.addChild(grimoire.container);
   uiContainer.addChild(debugPanel.container);
   uiContainer.addChild(minimap.container);
+  uiContainer.addChild(minimap.tooltipContainer);
   uiContainer.addChild(equipmentHud.tooltipContainer); // tooltip on top of all UI
   uiContainer.addChild(agentsHud.tooltipContainer);    // agent tooltip on top of all UI
 
@@ -155,6 +157,39 @@ async function startGame() {
   connection.onState((state: GameStateUpdate) => {
     latestState = state;
   });
+
+  // ── Send saved project directory to server on startup ───────────
+  const savedProjectDir = getProjectDir();
+  if (savedProjectDir) {
+    connection.sendInput({
+      tick: 0,
+      movement: { x: 0, y: 0 },
+      action: { SetProjectDirectory: { path: savedProjectDir } },
+      target: null,
+    });
+
+    // Check if init was requested from settings
+    if (getProjectInitFlag()) {
+      setProjectInitFlag(false);
+      connection.sendInput({
+        tick: 0,
+        movement: { x: 0, y: 0 },
+        action: "InitializeProjects",
+        target: null,
+      });
+    }
+  }
+
+  // Check if reset was requested from settings
+  if (localStorage.getItem('project_should_reset') === 'true') {
+    localStorage.removeItem('project_should_reset');
+    connection.sendInput({
+      tick: 0,
+      movement: { x: 0, y: 0 },
+      action: "ResetProjects",
+      target: null,
+    });
+  }
 
   // ── Client tick counter (used by both game loop and callbacks) ──
   let clientTick = 0;
@@ -248,6 +283,17 @@ async function startGame() {
     }
   });
 
+  app.canvas.addEventListener('wheel', (e: WheelEvent) => {
+    if (minimap.expanded) {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        minimap.zoomIn();
+      } else {
+        minimap.zoomOut();
+      }
+    }
+  }, { passive: false });
+
   // ── Keyboard input tracking ─────────────────────────────────────
   const keys: Set<string> = new Set();
   let crankActive = false;
@@ -303,6 +349,14 @@ async function startGame() {
     if (minimap.expanded) {
       if (key === 'escape') {
         minimap.close();
+        return;
+      }
+      if (key === '=' || key === '+') {
+        minimap.zoomIn();
+        return;
+      }
+      if (key === '-') {
+        minimap.zoomOut();
         return;
       }
       return;
