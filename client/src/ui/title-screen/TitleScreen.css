@@ -622,3 +622,256 @@
   border-color: var(--crimson-dim);
   box-shadow: 0 0 10px rgba(139, 32, 32, 0.15);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PROJECT SETUP — Title Screen Directory Selection
+   ═══════════════════════════════════════════════════════════ */
+
+.project-setup {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+  transform: translateY(18px);
+}
+
+.title-screen.loaded .project-setup {
+  animation: fadeInUp 0.8s ease forwards;
+  animation-delay: 0.5s;
+}
+
+.setup-prompt {
+  font-size: 0.65rem;
+  color: var(--gold);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin: 0;
+  text-shadow: 0 0 8px var(--gold-ghost);
+  animation: setupPulse 3s ease-in-out infinite;
+}
+
+@keyframes setupPulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.9; }
+}
+
+/* ── Browse button ────────────────────────────────────────── */
+
+.browse-btn {
+  padding: 10px 36px;
+  background: rgba(13, 17, 23, 0.75);
+  border: 1px solid var(--gold-dim);
+  color: var(--gold);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 1px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+
+.browse-btn:hover:not(:disabled) {
+  border-color: var(--gold);
+  box-shadow:
+    0 0 16px var(--gold-glow),
+    inset 0 0 16px var(--gold-ghost);
+  color: var(--gold-bright);
+}
+
+.browse-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 0 8px var(--gold-glow);
+}
+
+.browse-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.browse-btn-glow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 30%,
+    var(--gold-ghost) 50%,
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.browse-btn:hover:not(:disabled) .browse-btn-glow {
+  opacity: 1;
+}
+
+.browse-btn--change {
+  padding: 5px 16px;
+  font-size: 0.6rem;
+  letter-spacing: 0.15em;
+  opacity: 0.6;
+  border-color: var(--panel-border);
+}
+
+.browse-btn--change:hover:not(:disabled) {
+  opacity: 1;
+}
+
+/* ── Setup ready state ────────────────────────────────────── */
+
+.setup-ready {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.setup-dir-label {
+  font-size: 0.55rem;
+  color: var(--green);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.setup-dir-path {
+  font-size: 0.7rem;
+  color: var(--gold);
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 6px var(--gold-ghost);
+}
+
+/* ── Play button disabled state ───────────────────────────── */
+
+.play-btn--disabled {
+  opacity: 0.25 !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
+.play-btn--disabled .play-btn-glow {
+  display: none;
+}
+
+.play-btn--disabled::after {
+  display: none;
+}
+
+/* ── Settings modal: Browse inline button ─────────────────── */
+
+.input-with-browse {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-browse input {
+  flex: 1;
+}
+
+.browse-inline-btn {
+  padding: 8px 12px;
+  background: var(--gold-ghost);
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.browse-inline-btn:hover:not(:disabled) {
+  color: var(--gold);
+  border-color: var(--gold-dim);
+  box-shadow: 0 0 10px var(--gold-ghost);
+}
+
+.browse-inline-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INITIALIZATION LOADING SCREEN
+   ═══════════════════════════════════════════════════════════ */
+
+.init-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.init-heading {
+  font-size: clamp(0.9rem, 2.5vw, 1.4rem);
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  margin: 0;
+  text-shadow:
+    0 0 8px var(--gold-dim),
+    0 0 30px var(--gold-glow);
+  animation: titleBreath 4.5s ease-in-out infinite;
+}
+
+.init-bar-track {
+  width: 280px;
+  height: 2px;
+  background: rgba(201, 162, 39, 0.12);
+  border-radius: 1px;
+  overflow: hidden;
+  position: relative;
+}
+
+.init-bar-sweep {
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--gold),
+    transparent
+  );
+  animation: initSweep 1.8s ease-in-out infinite;
+}
+
+@keyframes initSweep {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
+
+.init-subtext {
+  font-size: 0.7rem;
+  color: var(--gold);
+  opacity: 0.6;
+  letter-spacing: 0.08em;
+  margin: 0;
+  animation: setupPulse 3s ease-in-out infinite;
+}
+
+.init-hint {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  margin: 0;
+}

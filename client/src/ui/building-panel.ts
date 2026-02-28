@@ -44,6 +44,7 @@ export class BuildingPanel {
 
   private _currentBuildingId: string | null = null;
   private currentPort: number | null = null;
+  private loadedIframeSrc: string = 'about:blank';
 
   /** The building ID currently displayed in the panel (null when closed). */
   get currentBuildingId(): string | null {
@@ -154,7 +155,7 @@ export class BuildingPanel {
       minHeight: '0',
     });
     this.iframe.src = 'about:blank';
-    this.iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+    // No sandbox — these are local Vite dev servers, not untrusted content.
 
     // ── Assemble ──────────────────────────────────────────────────
     this.container.appendChild(header);
@@ -173,6 +174,9 @@ export class BuildingPanel {
   open(buildingId: string, name: string, description: string, status: string): void {
     this._currentBuildingId = buildingId;
     this.currentPort = null;
+    // Reset iframe so the previous building's app doesn't bleed through
+    this.iframe.src = 'about:blank';
+    this.loadedIframeSrc = 'about:blank';
     this.titleEl.textContent = name;
     this.descriptionEl.textContent = description;
     this.updateStatus(status);
@@ -185,6 +189,7 @@ export class BuildingPanel {
     this.container.style.display = 'none';
     this.visible = false;
     this.iframe.src = 'about:blank';
+    this.loadedIframeSrc = 'about:blank';
     this._currentBuildingId = null;
     this.currentPort = null;
     this.callbacks.onClose();
@@ -214,8 +219,14 @@ export class BuildingPanel {
       this.setStatusBadge(`:${port}`, COLORS.statusBrightGreen, '#1a3a1a');
       this.setToggleButton('Stop', false);
 
+      // Only set iframe src when the URL actually changes — this method is
+      // called every tick (20Hz), and re-setting src triggers a full reload.
       if (this.currentPort !== null) {
-        this.iframe.src = `http://localhost:${this.currentPort}`;
+        const url = `http://localhost:${this.currentPort}`;
+        if (this.loadedIframeSrc !== url) {
+          this.iframe.src = url;
+          this.loadedIframeSrc = url;
+        }
       }
     } else if (status.startsWith('Error:')) {
       const msg = status.slice('Error:'.length);

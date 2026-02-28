@@ -4,3 +4,4 @@ pub mod game;
 pub mod network;
 pub mod project;
 pub mod protocol;
+pub mod vibe;

@@ -19,10 +19,12 @@ import { BuildingPanel } from './ui/building-panel';
 import { Minimap } from './ui/minimap';
 import { HotbarTooltip } from './ui/hotbar-tooltip';
 import { BuildingToolbar } from './ui/building-toolbar';
+import { TerminalOverlay } from './ui/terminal-overlay';
 import { ALL_BUILDINGS, TIER_NAMES, buildingTypeToId as buildingIdFromType } from './data/buildings';
 import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta, BuildingTypeKind } from './network/protocol';
 import { AudioManager } from './audio/manager';
 import { getProjectDir, getProjectInitFlag, setProjectInitFlag } from './utils/project-settings';
+import { getApiKey } from './utils/api-keys';
 
 // ── Building light source lookup ─────────────────────────────────────
 // Maps building types to their light radius (in world pixels).
@@ -48,9 +50,9 @@ function buildingTypeToName(type: string): string {
 }
 
 async function startGame() {
-  // Hide the React overlay
+  // Keep the React overlay visible — it shows a loading screen.
+  // We hide it once the server confirms project initialization is complete.
   const uiRoot = document.getElementById('ui-root')!;
-  uiRoot.style.display = 'none';
 
   const screenWidth = window.innerWidth;
   const screenHeight = window.innerHeight;
@@ -141,6 +143,17 @@ async function startGame() {
       const name = buildingTypeToName(buildingId.replace(/_./g, m => m[1].toUpperCase()).replace(/^./, c => c.toUpperCase()));
       const status = latestState?.project_manager?.building_statuses?.[buildingId] ?? 'NotInitialized';
       buildingPanel.open(buildingId, name, `Building: ${name}`, status);
+    },
+  });
+
+  const terminalOverlay = new TerminalOverlay({
+    onInput: (agentId, data) => {
+      connectionRef?.sendInput({
+        tick: clientTickRef,
+        movement: { x: 0, y: 0 },
+        action: { VibeInput: { agent_id: agentId, data } },
+        target: null,
+      });
     },
   });
 
@@ -246,12 +259,35 @@ async function startGame() {
   // Track the latest server state
   let latestState: GameStateUpdate | null = null;
   let previousTick = 0;
+  let initComplete = false;
 
   connection.onState((state: GameStateUpdate) => {
     latestState = state;
+
+    // Wait for project initialization before revealing the game
+    if (!initComplete && state.project_manager?.initialized) {
+      initComplete = true;
+      uiRoot.style.display = 'none';
+      console.log('[client] Project initialization confirmed — starting game');
+    }
+  });
+
+  connection.onVibeOutput((agentId, data) => {
+    terminalOverlay.writeOutput(agentId, data);
+  });
+
+  connection.onVibeSession((event) => {
+    if (event.type === 'started') {
+      console.log(`[vibe] Session started for agent ${event.agentId}`);
+    } else if (event.type === 'ended') {
+      terminalOverlay.sessionEnded(event.agentId, event.reason ?? 'unknown');
+      // Clean up the terminal instance after a short delay so the user can read the final output
+      setTimeout(() => terminalOverlay.removeSession(event.agentId), 10_000);
+    }
   });
 
   // ── Send saved project directory to server on startup ───────────
+  // The title screen guarantees a directory is selected before reaching here.
   const savedProjectDir = getProjectDir();
   if (savedProjectDir) {
     connection.sendInput({
@@ -261,7 +297,18 @@ async function startGame() {
       target: null,
     });
 
-    // Check if init was requested from settings
+    // Check if reset was requested from settings
+    if (localStorage.getItem('project_should_reset') === 'true') {
+      localStorage.removeItem('project_should_reset');
+      connection.sendInput({
+        tick: 0,
+        movement: { x: 0, y: 0 },
+        action: "ResetProjects",
+        target: null,
+      });
+    }
+
+    // Always initialize projects — the init flag is set by the title screen
     if (getProjectInitFlag()) {
       setProjectInitFlag(false);
       connection.sendInput({
@@ -273,13 +320,13 @@ async function startGame() {
     }
   }
 
-  // Check if reset was requested from settings
-  if (localStorage.getItem('project_should_reset') === 'true') {
-    localStorage.removeItem('project_should_reset');
+  // Send Mistral API key to server for vibe sessions
+  const mistralKey = getApiKey('mistral');
+  if (mistralKey) {
     connection.sendInput({
       tick: 0,
       movement: { x: 0, y: 0 },
-      action: "ResetProjects",
+      action: { SetMistralApiKey: { key: mistralKey } },
       target: null,
     });
   }
@@ -449,9 +496,16 @@ async function startGame() {
         return { id: agentId, name: agentData?.name ?? '?', tier: agentData?.tier ?? 'Apprentice' };
       });
 
-      // Feed idle agents to the picker
-      buildingToolbar.setIdleAgents(getIdleAgents());
-      buildingToolbar.show(bid, name, status, assignedAgents);
+      // Passive buildings — show description instead of agents/open app
+      const passiveDescriptions: Record<string, string> = {
+        Pylon: 'Enables observability into what agents are doing.',
+        ComputeFarm: 'Passively generates tokens over time.',
+      };
+      const desc = passiveDescriptions[nearestBuildingType];
+
+      // Feed idle agents to the picker (only for active buildings)
+      if (!desc) buildingToolbar.setIdleAgents(getIdleAgents());
+      buildingToolbar.show(bid, name, status, assignedAgents, desc ? { description: desc } : undefined);
       buildingToolbar.cancelScheduledHide();
       toolbarBuildingEntityId = nearestBuildingId;
 
@@ -459,6 +513,18 @@ async function startGame() {
       const screenBx = nearestBx * ZOOM + worldContainer.x;
       const screenBy = nearestBy * ZOOM + worldContainer.y + 10 * ZOOM;
       buildingToolbar.updatePosition(screenBx, screenBy);
+
+      // Show terminal overlay for buildings with active vibe sessions
+      if (assignments.length > 0) {
+        const firstAgentId = assignments[0];
+        const agentEntity = entityMap.get(firstAgentId);
+        const agentData = agentEntity ? (agentEntity.data as { Agent?: { name: string; state: string } }).Agent : null;
+        if (agentData && agentData.state === 'Building') {
+          const termScreenBx = nearestBx * ZOOM + worldContainer.x;
+          const termScreenBy = nearestBy * ZOOM + worldContainer.y - 40 * ZOOM;
+          terminalOverlay.showPeek(firstAgentId, bid, agentData.name, buildingTypeToName(nearestBuildingType), termScreenBx, termScreenBy);
+        }
+      }
     } else if (buildingToolbar.visible) {
       buildingToolbar.scheduleHide();
     }
@@ -531,6 +597,12 @@ async function startGame() {
         debugPanel.close();
         return;
       }
+      return;
+    }
+
+    // ── Terminal overlay key handling ─────────────────────────────
+    if (terminalOverlay.visible && key === 'escape') {
+      terminalOverlay.unpin();
       return;
     }
 

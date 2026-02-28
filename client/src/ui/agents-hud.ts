@@ -92,6 +92,7 @@ const TIER_ICONS: Record<AgentTierKind, string> = {
 
 const STATE_COLORS: Record<AgentStateKind, number> = {
   Idle: 0xccaa44,
+  Walking: 0xaacc44,
   Building: 0x44cc66,
   Erroring: 0xff6644,
   Exploring: 0x6688cc,

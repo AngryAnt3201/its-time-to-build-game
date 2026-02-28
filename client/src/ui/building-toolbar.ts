@@ -29,6 +29,7 @@ export class BuildingToolbar {
   private container: HTMLDivElement;
   private nameEl: HTMLSpanElement;
   private statusEl: HTMLSpanElement;
+  private descEl: HTMLDivElement;
   private slotsEl: HTMLDivElement;
   private openAppBtn: HTMLButtonElement;
   private pickerEl: HTMLDivElement;
@@ -75,6 +76,10 @@ export class BuildingToolbar {
     header.appendChild(this.nameEl);
     header.appendChild(this.statusEl);
 
+    // Description line (for passive buildings)
+    this.descEl = document.createElement('div');
+    this.descEl.style.cssText = 'display: none; color: #8a7a5a; font-size: 10px; margin-bottom: 6px; line-height: 1.3;';
+
     // Agent slots row
     this.slotsEl = document.createElement('div');
     this.slotsEl.style.cssText = 'display: flex; gap: 4px; margin-bottom: 6px;';
@@ -114,6 +119,7 @@ export class BuildingToolbar {
     });
 
     this.container.appendChild(header);
+    this.container.appendChild(this.descEl);
     this.container.appendChild(this.slotsEl);
     this.container.appendChild(this.pickerEl);
     this.container.appendChild(this.openAppBtn);
@@ -126,7 +132,7 @@ export class BuildingToolbar {
     this.idleAgents = agents;
   }
 
-  show(buildingId: string, name: string, status: string, assignedAgents: AssignedAgent[]) {
+  show(buildingId: string, name: string, status: string, assignedAgents: AssignedAgent[], opts?: { description?: string }) {
     if (this.hideTimer) {
       clearTimeout(this.hideTimer);
       this.hideTimer = null;
@@ -135,7 +141,21 @@ export class BuildingToolbar {
     this.currentBuildingId = buildingId;
     this.nameEl.textContent = name;
     this.updateStatusBadge(status);
-    this.updateSlots(assignedAgents);
+
+    if (opts?.description) {
+      // Passive building — show description, hide agents & open app
+      this.descEl.textContent = opts.description;
+      this.descEl.style.display = 'block';
+      this.slotsEl.style.display = 'none';
+      this.openAppBtn.style.display = 'none';
+      this.closePicker();
+    } else {
+      // Normal building — show agents & open app, hide description
+      this.descEl.style.display = 'none';
+      this.updateSlots(assignedAgents);
+      this.slotsEl.style.display = 'flex';
+      this.openAppBtn.style.display = 'block';
+    }
 
     this.container.style.display = 'block';
     this.visible = true;

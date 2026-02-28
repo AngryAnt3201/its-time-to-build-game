@@ -20,3 +20,20 @@ export function setProjectInitFlag(value: boolean): void {
     localStorage.removeItem(PROJECT_INIT_FLAG);
   }
 }
+
+/** Open the native directory picker via the server HTTP API. Returns the selected path or null. */
+export async function browseForDirectory(): Promise<string | null> {
+  try {
+    const res = await fetch("http://127.0.0.1:9002/api/browse-directory", { method: "POST" });
+    const data = await res.json();
+    return data.path ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns true if a project directory has been configured. */
+export function isProjectReady(): boolean {
+  const dir = getProjectDir();
+  return !!dir && dir.length > 0;
+}

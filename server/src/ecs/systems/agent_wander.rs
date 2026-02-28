@@ -9,6 +9,9 @@ const BASE_WANDER_SPEED: f32 = 0.4;
 /// Distance threshold to consider waypoint "reached".
 const WAYPOINT_THRESHOLD: f32 = 2.0;
 
+/// Distance threshold for Walking agents to be considered "arrived" at building.
+const BUILDING_ARRIVAL_THRESHOLD: f32 = 48.0;
+
 /// Minimum pause ticks at waypoint (1 second at 20Hz).
 const MIN_PAUSE_TICKS: u32 = 20;
 
@@ -17,22 +20,59 @@ const MAX_PAUSE_TICKS: u32 = 60;
 
 /// Runs the agent wander system for a single tick.
 ///
-/// Only processes agents in the Idle state. Walking agents move toward
-/// their current waypoint; pausing agents decrement their timer. When a
-/// waypoint is reached, the agent pauses then picks a new random waypoint
-/// within wander_radius of home.
+/// Processes agents in Idle, Building, or Walking states.
+/// - Walking agents move directly toward their walk_target with no pausing.
+///   When they arrive (within BUILDING_ARRIVAL_THRESHOLD), they transition to
+///   Building state with reduced wander radius.
+/// - Idle/Building agents wander randomly around their home position with pauses.
 pub fn agent_wander_system(world: &mut World) {
-    // Collect idle agents to avoid borrow conflicts.
-    let idle_agents: Vec<(hecs::Entity, f32)> = world
+    // Collect agents that should move
+    let moveable_agents: Vec<(hecs::Entity, f32, AgentStateKind)> = world
         .query::<(&Agent, &AgentState, &AgentStats)>()
         .iter()
         .filter(|(_e, (_a, state, _stats))| {
-            state.state == AgentStateKind::Idle || state.state == AgentStateKind::Building
+            matches!(state.state, AgentStateKind::Idle | AgentStateKind::Building | AgentStateKind::Walking)
         })
-        .map(|(e, (_a, _state, stats))| (e, stats.speed))
+        .map(|(e, (_a, state, stats))| (e, stats.speed, state.state))
         .collect();
 
-    for (entity, speed) in idle_agents {
+    let mut arrivals: Vec<hecs::Entity> = Vec::new();
+
+    for (entity, speed, agent_state) in moveable_agents {
+        // Walking agents: move directly toward walk_target, no pausing
+        if agent_state == AgentStateKind::Walking {
+            let Ok(wander) = world.get::<&WanderState>(entity) else { continue; };
+            let Some((tx, ty)) = wander.walk_target else { continue; };
+            drop(wander);
+
+            let Ok(pos) = world.get::<&Position>(entity) else { continue; };
+            let dx = tx - pos.x;
+            let dy = ty - pos.y;
+            let dist = (dx * dx + dy * dy).sqrt();
+            drop(pos);
+
+            if dist < BUILDING_ARRIVAL_THRESHOLD {
+                arrivals.push(entity);
+            } else {
+                let walk_speed = BASE_WANDER_SPEED * speed;
+                let nx = dx / dist;
+                let ny = dy / dist;
+                let vx = nx * walk_speed;
+                let vy = ny * walk_speed;
+
+                if let Ok(mut vel) = world.get::<&mut Velocity>(entity) {
+                    vel.x = vx;
+                    vel.y = vy;
+                }
+                if let Ok(mut pos) = world.get::<&mut Position>(entity) {
+                    pos.x += vx;
+                    pos.y += vy;
+                }
+            }
+            continue;
+        }
+
+        // Existing idle/building wander logic
         let Ok(mut wander) = world.get::<&mut WanderState>(entity) else {
             continue;
         };
@@ -55,7 +95,7 @@ pub fn agent_wander_system(world: &mut World) {
         let (wp_x, wp_y) = (wander.waypoint_x, wander.waypoint_y);
         let radius = wander.wander_radius;
 
-        // Need current position — drop wander borrow first.
+        // Need current position -- drop wander borrow first.
         drop(wander);
 
         let Ok(pos) = world.get::<&Position>(entity) else {
@@ -67,7 +107,7 @@ pub fn agent_wander_system(world: &mut World) {
         drop(pos);
 
         if dist < WAYPOINT_THRESHOLD {
-            // Reached waypoint — pause, then pick a new one.
+            // Reached waypoint -- pause, then pick a new one.
             let Ok(mut wander) = world.get::<&mut WanderState>(entity) else {
                 continue;
             };
@@ -104,6 +144,29 @@ pub fn agent_wander_system(world: &mut World) {
             }
         }
     }
+
+    // Transition arrived walkers to Building state
+    for entity in arrivals {
+        if let Ok(mut state) = world.get::<&mut AgentState>(entity) {
+            state.state = AgentStateKind::Building;
+        }
+        // Set home to the agent's current position (a couple blocks from building)
+        // so they wander near where they stopped, not on top of the building.
+        let stopped_pos = world.get::<&Position>(entity).ok().map(|p| (p.x, p.y));
+        if let Ok(mut wander) = world.get::<&mut WanderState>(entity) {
+            if let Some((sx, sy)) = stopped_pos {
+                wander.home_x = sx;
+                wander.home_y = sy;
+            }
+            wander.wander_radius = 20.0;
+            wander.walk_target = None;
+            wander.pause_remaining = 0;
+        }
+        if let Ok(mut vel) = world.get::<&mut Velocity>(entity) {
+            vel.x = 0.0;
+            vel.y = 0.0;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -136,6 +199,7 @@ mod tests {
                 waypoint_y: y,
                 pause_remaining: 0,
                 wander_radius: 120.0,
+                walk_target: None,
             },
         ))
     }
@@ -196,6 +260,7 @@ mod tests {
                 waypoint_y: 100.0,
                 pause_remaining: 0,
                 wander_radius: 120.0,
+                walk_target: None,
             },
         ));
 
@@ -250,5 +315,76 @@ mod tests {
             fast_pos.x > slow_pos.x,
             "Faster agent should move further per tick"
         );
+    }
+
+    #[test]
+    fn walking_agent_moves_toward_target() {
+        let mut world = World::new();
+        let entity = world.spawn((
+            Agent,
+            Position { x: 100.0, y: 100.0 },
+            Velocity::default(),
+            AgentStats {
+                reliability: 0.8,
+                speed: 1.0,
+                awareness: 80.0,
+                resilience: 60.0,
+            },
+            AgentState {
+                state: AgentStateKind::Walking,
+            },
+            WanderState {
+                home_x: 100.0,
+                home_y: 100.0,
+                waypoint_x: 500.0,
+                waypoint_y: 100.0,
+                pause_remaining: 0,
+                wander_radius: 120.0,
+                walk_target: Some((500.0, 100.0)),
+            },
+        ));
+
+        agent_wander_system(&mut world);
+
+        let pos = world.get::<&Position>(entity).unwrap();
+        assert!(pos.x > 100.0, "Walking agent should move toward target");
+    }
+
+    #[test]
+    fn walking_agent_transitions_to_building_on_arrival() {
+        let mut world = World::new();
+        let entity = world.spawn((
+            Agent,
+            Position { x: 490.0, y: 100.0 },
+            Velocity::default(),
+            AgentStats {
+                reliability: 0.8,
+                speed: 1.0,
+                awareness: 80.0,
+                resilience: 60.0,
+            },
+            AgentState {
+                state: AgentStateKind::Walking,
+            },
+            WanderState {
+                home_x: 100.0,
+                home_y: 100.0,
+                waypoint_x: 500.0,
+                waypoint_y: 100.0,
+                pause_remaining: 0,
+                wander_radius: 120.0,
+                walk_target: Some((500.0, 100.0)),
+            },
+        ));
+
+        agent_wander_system(&mut world);
+
+        let state = world.get::<&AgentState>(entity).unwrap();
+        assert_eq!(state.state, AgentStateKind::Building, "Should transition to Building on arrival");
+
+        let wander = world.get::<&WanderState>(entity).unwrap();
+        assert!(wander.walk_target.is_none(), "walk_target should be cleared");
+        assert_eq!(wander.home_x, 490.0, "home should be agent's stopped position");
+        assert_eq!(wander.wander_radius, 20.0, "wander_radius should be reduced");
     }
 }

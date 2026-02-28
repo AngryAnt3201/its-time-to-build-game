@@ -77,6 +77,7 @@ pub enum EntityData {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentStateKind {
     Idle,
+    Walking,
     Building,
     Erroring,
     Exploring,
@@ -264,6 +265,10 @@ pub enum PlayerAction {
     DebugUnlockAllBuildings,
     DebugLockAllBuildings,
     UnlockBuilding { building_id: String },
+
+    // Vibe session actions
+    VibeInput { agent_id: u64, data: String },
+    SetMistralApiKey { key: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -281,4 +286,19 @@ pub struct PlayerInput {
     pub movement: Vec2,
     pub action: Option<PlayerAction>,
     pub target: Option<EntityId>,
+}
+
+/// Server-to-client message wrapper. All messages sent to the client
+/// are wrapped in this enum so the client can distinguish between
+/// game state updates and vibe terminal I/O.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ServerMessage {
+    /// Normal game state update (20Hz).
+    GameState(GameStateUpdate),
+    /// Real-time PTY output from a vibe session.
+    VibeOutput { agent_id: u64, data: Vec<u8> },
+    /// Vibe session started.
+    VibeSessionStarted { agent_id: u64 },
+    /// Vibe session ended.
+    VibeSessionEnded { agent_id: u64, reason: String },
 }

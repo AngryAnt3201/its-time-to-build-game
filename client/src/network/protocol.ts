@@ -72,6 +72,7 @@ export interface ItemData {
 
 export type AgentStateKind =
   | "Idle"
+  | "Walking"
   | "Building"
   | "Erroring"
   | "Exploring"
@@ -197,6 +198,13 @@ export interface GameStateUpdate {
   project_manager: ProjectManagerState | null;
 }
 
+// ── Server → Client message wrapper ────────────────────────────────
+export type ServerMessage =
+  | { GameState: GameStateUpdate }
+  | { VibeOutput: { agent_id: number; data: number[] } }
+  | { VibeSessionStarted: { agent_id: number } }
+  | { VibeSessionEnded: { agent_id: number; reason: string } };
+
 // ── Client -> Server messages ──────────────────────────────────────
 
 // Serde externally-tagged enum: unit variants serialize as plain strings,
@@ -232,7 +240,9 @@ export type PlayerAction =
   | { UnassignAgentFromProject: { agent_id: number; building_id: string } }
   | "DebugUnlockAllBuildings"
   | "DebugLockAllBuildings"
-  | { UnlockBuilding: { building_id: string } };
+  | { UnlockBuilding: { building_id: string } }
+  | { VibeInput: { agent_id: number; data: string } }
+  | { SetMistralApiKey: { key: string } };
 
 export type TaskAssignment =
   | "Build"

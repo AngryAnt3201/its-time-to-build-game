@@ -36,6 +36,7 @@ const FOG_RGB: RGB = [10, 10, 10];
 
 const AGENT_STATE_COLORS: Record<AgentStateKind, string> = {
   Idle: '#ccaa44',
+  Walking: '#aacc44',
   Building: '#44cc66',
   Erroring: '#ff6644',
   Exploring: '#6688cc',

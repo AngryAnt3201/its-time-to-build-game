@@ -109,7 +109,7 @@ impl ProjectManager {
 
         for building in &self.manifest.buildings {
             let dir = base.join(&building.directory_name);
-            match scaffold::scaffold_project(&dir, &building.name, &building.description).await {
+            match scaffold::scaffold_project(&dir, &building.name, &building.description, building.tier, building.port).await {
                 Ok(msg) => {
                     self.statuses
                         .insert(building.id.clone(), ProjectStatus::Ready);

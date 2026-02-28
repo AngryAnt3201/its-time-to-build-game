@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getApiKey, setApiKey } from '../../utils/api-keys';
-import { getProjectDir, setProjectDir, setProjectInitFlag } from '../../utils/project-settings';
+import { getProjectDir, setProjectDir, setProjectInitFlag, browseForDirectory } from '../../utils/project-settings';
 
 interface SettingsModalProps {
   open: boolean;
@@ -14,6 +14,7 @@ export function SettingsModal({ open, onClose, onClickSound }: SettingsModalProp
   const [projectDirValue, setProjectDirValue] = useState('');
   const [showMistral, setShowMistral] = useState(false);
   const [showElevenlabs, setShowElevenlabs] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -136,14 +137,30 @@ export function SettingsModal({ open, onClose, onClickSound }: SettingsModalProp
           <span className="input-hint">
             Base directory where building code projects will be created
           </span>
-          <input
-            type="text"
-            value={projectDirValue}
-            onChange={(e) => setProjectDirValue(e.target.value)}
-            placeholder="/home/user/projects"
-            spellCheck={false}
-            autoComplete="off"
-          />
+          <div className="input-with-browse">
+            <input
+              type="text"
+              value={projectDirValue}
+              onChange={(e) => setProjectDirValue(e.target.value)}
+              placeholder="/home/user/projects"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <button
+              className="browse-inline-btn"
+              onClick={async () => {
+                onClickSound?.();
+                setBrowsing(true);
+                const path = await browseForDirectory();
+                setBrowsing(false);
+                if (path) setProjectDirValue(path);
+              }}
+              disabled={browsing}
+              type="button"
+            >
+              {browsing ? '...' : 'BROWSE'}
+            </button>
+          </div>
         </div>
 
         <div className="settings-actions">

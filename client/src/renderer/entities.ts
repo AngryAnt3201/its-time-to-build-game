@@ -18,6 +18,7 @@ interface EntitySprite {
 
 const AGENT_STATE_COLORS: Record<AgentStateKind, number> = {
   Idle: 0xccaa44,
+  Walking: 0x88ccff,
   Building: 0x44cc66,
   Erroring: 0xff6644,
   Exploring: 0x6688cc,

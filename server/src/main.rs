@@ -6,6 +6,7 @@ use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
 use its_time_to_build_server::project;
 use its_time_to_build_server::protocol::*;
+use its_time_to_build_server::vibe::manager::VibeManager;
 use tokio::time::{interval, Duration};
 use tracing::info;
 
@@ -58,6 +59,9 @@ const PLAYER_SPEED: f32 = 3.0; // pixels per tick
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    // Start the HTTP API server (for native file dialog, etc.) in the background.
+    tokio::spawn(its_time_to_build_server::network::http_api::start());
+
     // Start the server and wait for a client to connect.
     let mut server = GameServer::start().await;
 
@@ -67,9 +71,17 @@ async fn main() {
     let (mut world, mut game_state) = create_world();
 
     // ── Create project manager ───────────────────────────────────────
-    let mut project_manager = project::ProjectManager::new(
-        std::path::Path::new("buildings_manifest.json"),
-    );
+    // The manifest lives at the repo root. Resolve relative to the cargo
+    // manifest dir at compile time, or fall back to ../buildings_manifest.json
+    // when running from the server/ directory.
+    let manifest_path = std::path::Path::new("buildings_manifest.json");
+    let manifest_path = if manifest_path.exists() {
+        manifest_path.to_path_buf()
+    } else {
+        std::path::PathBuf::from("../buildings_manifest.json")
+    };
+    let mut project_manager = project::ProjectManager::new(&manifest_path);
+    let mut vibe_manager = VibeManager::new();
 
     let mut ticker = interval(TICK_DURATION);
 
@@ -328,17 +340,15 @@ async fn main() {
                                 }
                             }
 
-                            // Set agent to Building state
+                            // Set agent to Walking state (will walk to building, then transition)
                             let _ = agents::assign_task(&mut world, agent_entity, TaskAssignment::Build);
 
-                            // Update wander state to mill around the building
+                            // Set walk target to building position
                             if let Some((bx, by)) = building_pos {
                                 if let Ok(mut wander) = world.get::<&mut WanderState>(agent_entity) {
-                                    wander.home_x = bx;
-                                    wander.home_y = by;
-                                    wander.waypoint_x = bx + (rand::random::<f32>() - 0.5) * 40.0;
-                                    wander.waypoint_y = by + (rand::random::<f32>() - 0.5) * 40.0;
-                                    wander.wander_radius = 20.0;
+                                    wander.walk_target = Some((bx, by));
+                                    wander.waypoint_x = bx;
+                                    wander.waypoint_y = by;
                                     wander.pause_remaining = 0;
                                 }
                             }
@@ -351,14 +361,17 @@ async fn main() {
                     }
                     PlayerAction::UnassignAgentFromProject { agent_id, building_id } => {
                         project_manager.unassign_agent(building_id, *agent_id);
+                        vibe_manager.kill_session(*agent_id);
+                        vibe_manager.clear_failed(*agent_id);
 
                         // Reset agent to Idle state
                         if let Some(agent_entity) = hecs::Entity::from_bits(*agent_id) {
                             let _ = agents::assign_task(&mut world, agent_entity, TaskAssignment::Idle);
 
-                            // Reset wander radius to default
+                            // Reset wander radius to default and clear walk target
                             if let Ok(mut wander) = world.get::<&mut WanderState>(agent_entity) {
                                 wander.wander_radius = 120.0;
+                                wander.walk_target = None;
                             }
                         }
 
@@ -378,6 +391,17 @@ async fn main() {
                     PlayerAction::UnlockBuilding { building_id } => {
                         project_manager.unlock_building(building_id);
                         debug_log_entries.push(format!("[project] building {} unlocked", building_id));
+                    }
+
+                    // ── Vibe session actions ─────────────────────────
+                    PlayerAction::SetMistralApiKey { key } => {
+                        vibe_manager.set_api_key(key.clone());
+                        debug_log_entries.push("[vibe] Mistral API key set".to_string());
+                    }
+                    PlayerAction::VibeInput { agent_id, data } => {
+                        if let Err(e) = vibe_manager.send_input(*agent_id, data.as_bytes()) {
+                            debug_log_entries.push(format!("[vibe] input error: {}", e));
+                        }
                     }
 
                     PlayerAction::PlaceBuilding { building_type, x, y } => {
@@ -439,6 +463,95 @@ async fn main() {
 
         // ── 7c. Idle agent wandering ─────────────────────────────────
         agent_wander::agent_wander_system(&mut world);
+
+        // ── 7d. Vibe session management ─────────────────────────────
+        // Spawn sessions for agents that just arrived at buildings (in Building state without a session)
+        {
+            let agents_needing_sessions: Vec<(u64, String, u32)> = world
+                .query::<hecs::With<(&AgentState, &AgentVibeConfig), &Agent>>()
+                .iter()
+                .filter(|(_id, (state, _vibe))| state.state == AgentStateKind::Building)
+                .filter(|(id, _)| {
+                    let aid: u64 = id.to_bits().into();
+                    !vibe_manager.has_session(aid) && !vibe_manager.has_failed(aid)
+                })
+                .map(|(id, (_state, vibe))| (id.to_bits().into(), vibe.model_id.clone(), vibe.max_turns))
+                .collect();
+
+            for (agent_id, model_id, max_turns) in agents_needing_sessions {
+                if let Some(base) = project_manager.base_dir.as_ref() {
+                    // Find which building this agent is assigned to
+                    let mut found_building = None;
+                    for (bid, agents) in &project_manager.agent_assignments {
+                        if agents.contains(&agent_id) {
+                            if let Some(building) = project_manager.manifest.get_building(bid) {
+                                let work_dir = base.join(&building.directory_name);
+                                if work_dir.exists() {
+                                    found_building = Some((bid.clone(), work_dir));
+                                }
+                            }
+                            break;
+                        }
+                    }
+
+                    if let Some((bid, work_dir)) = found_building {
+                        match vibe_manager.start_session(
+                            agent_id,
+                            bid.clone(),
+                            work_dir,
+                            model_id,
+                            max_turns,
+                        ) {
+                            Ok(()) => {
+                                debug_log_entries.push(format!(
+                                    "[vibe] session started for agent {} on {}",
+                                    agent_id, bid
+                                ));
+                                server.send_message(&ServerMessage::VibeSessionStarted { agent_id });
+                            }
+                            Err(e) => {
+                                debug_log_entries.push(format!(
+                                    "[vibe] failed to start session: {}", e
+                                ));
+                                vibe_manager.mark_failed(agent_id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Drain vibe output and send to client
+        for (agent_id, data) in vibe_manager.drain_output() {
+            server.send_message(&ServerMessage::VibeOutput { agent_id, data });
+        }
+
+        // Poll for finished sessions
+        for (agent_id, _success) in vibe_manager.poll_exits() {
+            server.send_message(&ServerMessage::VibeSessionEnded {
+                agent_id,
+                reason: "Session completed".to_string(),
+            });
+        }
+
+        // Kill vibe sessions for agents in Erroring state
+        {
+            let erroring_with_sessions: Vec<u64> = world
+                .query::<hecs::With<&AgentState, &Agent>>()
+                .iter()
+                .filter(|(_id, state)| state.state == AgentStateKind::Erroring)
+                .filter(|(id, _)| vibe_manager.has_session(id.to_bits().into()))
+                .map(|(id, _)| id.to_bits().into())
+                .collect();
+
+            for agent_id in erroring_with_sessions {
+                vibe_manager.kill_session(agent_id);
+                server.send_message(&ServerMessage::VibeSessionEnded {
+                    agent_id,
+                    reason: "Agent errored — context limit reached".to_string(),
+                });
+            }
+        }
 
         // ── 8. Collect log entries from system results ───────────────
         let mut log_entries: Vec<LogEntry> = Vec::new();

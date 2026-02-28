@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
-use crate::protocol::{GameStateUpdate, PlayerInput};
+use crate::protocol::{GameStateUpdate, PlayerInput, ServerMessage};
 
 /// Channel for sending serialized state frames to the connected client.
 type StateTx = mpsc::UnboundedSender<Vec<u8>>;
@@ -108,12 +108,18 @@ impl GameServer {
         }
     }
 
-    /// Serialize `GameStateUpdate` via msgpack and send to the connected
-    /// client. If no client is connected (or the channel has been dropped),
-    /// this is a no-op.
+    /// Serialize `GameStateUpdate` via msgpack wrapped in `ServerMessage::GameState`
+    /// and send to the connected client. If no client is connected (or the
+    /// channel has been dropped), this is a no-op.
     pub fn send_state(&mut self, update: &GameStateUpdate) {
+        let msg = ServerMessage::GameState(update.clone());
+        self.send_message(&msg);
+    }
+
+    /// Send any ServerMessage to the client.
+    pub fn send_message(&mut self, msg: &ServerMessage) {
         if let Some(tx) = &self.client_tx {
-            match rmp_serde::to_vec_named(update) {
+            match rmp_serde::to_vec_named(msg) {
                 Ok(bytes) => {
                     if tx.send(bytes).is_err() {
                         warn!("Client disconnected — stopping sends");
@@ -121,7 +127,7 @@ impl GameServer {
                     }
                 }
                 Err(e) => {
-                    error!("Failed to serialize GameStateUpdate: {}", e);
+                    error!("Failed to serialize ServerMessage: {}", e);
                 }
             }
         }

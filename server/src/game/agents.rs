@@ -143,6 +143,7 @@ pub fn recruit_agent(
             waypoint_y: spawn_y + (rand::random::<f32>() - 0.5) * 240.0,
             pause_remaining: (rand::random::<f32>() * 40.0) as u32 + 20,
             wander_radius: 120.0,
+            walk_target: None,
         },
         Collider { radius: 5.0 },
         Health {
@@ -193,7 +194,7 @@ pub fn assign_task(
 
     // Map task to the corresponding agent state
     let new_state = match task {
-        TaskAssignment::Build => AgentStateKind::Building,
+        TaskAssignment::Build => AgentStateKind::Walking,
         TaskAssignment::Explore => AgentStateKind::Exploring,
         TaskAssignment::Guard => AgentStateKind::Defending,
         TaskAssignment::Crank => AgentStateKind::Building,

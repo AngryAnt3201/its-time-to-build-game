@@ -159,6 +159,8 @@ pub struct WanderState {
     pub waypoint_y: f32,
     pub pause_remaining: u32,
     pub wander_radius: f32,
+    /// When set, agent walks to this target and transitions to Building on arrival.
+    pub walk_target: Option<(f32, f32)>,
 }
 
 #[derive(Debug, Clone)]
