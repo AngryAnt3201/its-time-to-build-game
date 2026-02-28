@@ -202,6 +202,15 @@ export interface DebugSnapshot {
   crank_tier: string;
 }
 
+// ── Project Management ──────────────────────────────────────────────
+
+export interface ProjectManagerState {
+  base_dir: string | null;
+  initialized: boolean;
+  unlocked_buildings: string[];
+  building_statuses: Record<string, string>;
+}
+
 // ── Main game state update (Server -> Client) ─────────────────────
 
 export interface GameStateUpdate {
@@ -214,6 +223,7 @@ export interface GameStateUpdate {
   log_entries: LogEntry[];
   audio_triggers: AudioEvent[];
   debug: DebugSnapshot;
+  project_manager: ProjectManagerState | null;
 }
 
 // ── Client -> Server messages ──────────────────────────────────────
@@ -238,7 +248,20 @@ export type PlayerAction =
   | { DebugSetCrankTier: { tier: string } }
   | "DebugToggleGodMode"
   | { DebugSpawnRogue: { rogue_type: RogueTypeKind } }
-  | "DebugHealPlayer";
+  | "DebugHealPlayer"
+  | { DebugSpawnAgent: { tier: AgentTierKind } }
+  | "DebugClearAgents"
+  // Project management actions
+  | { SetProjectDirectory: { path: string } }
+  | "InitializeProjects"
+  | "ResetProjects"
+  | { StartDevServer: { building_id: string } }
+  | { StopDevServer: { building_id: string } }
+  | { AssignAgentToProject: { agent_id: number; building_id: string } }
+  | { UnassignAgentFromProject: { agent_id: number; building_id: string } }
+  | "DebugUnlockAllBuildings"
+  | "DebugLockAllBuildings"
+  | { UnlockBuilding: { building_id: string } };
 
 export type TaskAssignment =
   | "Build"
