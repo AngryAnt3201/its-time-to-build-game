@@ -89,7 +89,7 @@ export class TerminalOverlay {
     this.header.appendChild(this.closeBtn);
 
     this.terminalEl = document.createElement('div');
-    this.terminalEl.style.cssText = 'width: 100%; height: calc(100% - 32px);';
+    this.terminalEl.style.cssText = 'width: 100%; height: calc(100% - 34px); overflow: hidden;';
 
     this.container.appendChild(this.header);
     this.container.appendChild(this.terminalEl);
@@ -101,8 +101,6 @@ export class TerminalOverlay {
     let instance = this.instances.get(agentId);
     if (!instance) {
       const terminal = new Terminal({
-        rows: 24,
-        cols: 80,
         theme: {
           background: '#0d0d0d',
           foreground: '#cccccc',
@@ -177,14 +175,22 @@ export class TerminalOverlay {
       this.statusEl.style.color = '#4a8';
     }
 
-    // Mount terminal into container
-    this.terminalEl.innerHTML = '';
-    instance.terminal.open(this.terminalEl);
+    // Mount terminal — only call open() once per instance.
+    // On subsequent opens, re-attach the existing element to preserve scrollback.
+    if (!instance.terminal.element) {
+      // First time: open creates the DOM
+      this.terminalEl.innerHTML = '';
+      instance.terminal.open(this.terminalEl);
+    } else if (instance.terminal.element.parentElement !== this.terminalEl) {
+      // Re-attach existing terminal DOM (preserves all state)
+      this.terminalEl.innerHTML = '';
+      this.terminalEl.appendChild(instance.terminal.element);
+    }
 
     this.container.style.display = 'block';
     this.visible = true;
 
-    // Fit after DOM is rendered, then scroll to bottom and focus
+    // Fit to fill container, scroll to bottom, and focus
     requestAnimationFrame(() => {
       instance.fitAddon.fit();
       instance.terminal.scrollToBottom();
