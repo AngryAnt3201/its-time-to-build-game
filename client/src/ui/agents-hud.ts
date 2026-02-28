@@ -344,6 +344,12 @@ export class AgentsHUD {
     for (const delta of entities) {
       if ('Agent' in delta.data) {
         const a = delta.data.Agent;
+        // Skip bound agents — they haven't been recruited yet
+        if (a.bound) {
+          this.agents.delete(delta.id);
+          changed = true;
+          continue;
+        }
         this.agents.set(delta.id, {
           id: delta.id,
           name: a.name,
