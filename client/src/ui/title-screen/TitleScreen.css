@@ -6,19 +6,19 @@
 /* ── Palette ───────────────────────────────────────────── */
 
 .title-screen {
-  --cyan: #4ecdc4;
-  --cyan-bright: #7eeee6;
-  --cyan-dim: rgba(78, 205, 196, 0.4);
-  --cyan-glow: rgba(78, 205, 196, 0.15);
-  --cyan-ghost: rgba(78, 205, 196, 0.06);
-  --green: #5cb85c;
-  --green-dim: rgba(76, 175, 80, 0.4);
-  --amber: #d4a017;
-  --amber-dim: rgba(212, 160, 23, 0.35);
+  --gold: #c9a227;
+  --gold-bright: #e8c040;
+  --gold-dim: rgba(201, 162, 39, 0.4);
+  --gold-glow: rgba(201, 162, 39, 0.15);
+  --gold-ghost: rgba(201, 162, 39, 0.06);
+  --green: #6b8e23;
+  --green-dim: rgba(107, 142, 35, 0.45);
+  --crimson: #8b2020;
+  --crimson-dim: rgba(139, 32, 32, 0.4);
   --dark: #0a0a0a;
-  --panel: #0d1117;
-  --panel-border: #1a2332;
-  --text-muted: #4a5568;
+  --panel: #12100c;
+  --panel-border: #2a2218;
+  --text-muted: #5a4e3c;
 
   position: fixed;
   inset: 0;
@@ -104,9 +104,9 @@
 }
 
 @keyframes crtFlicker {
-  0%   { background: rgba(78, 205, 196, 0.6); }
+  0%   { background: rgba(201, 162, 39, 0.5); }
   50%  { background: transparent; }
-  100% { background: rgba(78, 205, 196, 0.3); }
+  100% { background: rgba(201, 162, 39, 0.25); }
 }
 
 /* ── Content layer ─────────────────────────────────────── */
@@ -174,34 +174,34 @@
   line-height: 1.15;
   position: relative;
   text-shadow:
-    0 0 8px var(--cyan-dim),
-    0 0 30px var(--cyan-glow),
-    0 0 60px var(--cyan-ghost);
+    0 0 8px var(--gold-dim),
+    0 0 30px var(--gold-glow),
+    0 0 60px var(--gold-ghost);
   animation: titleBreath 4.5s ease-in-out infinite;
 }
 
-/* Glitch: cyan channel — clips top half */
+/* Glitch: sickly green channel — clips top half */
 .title-glitch::before {
   content: attr(data-text);
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  color: var(--cyan);
+  color: var(--green);
   z-index: -1;
   clip-path: inset(0 0 55% 0);
   opacity: 0;
   animation: glitchA 6s ease-in-out infinite;
 }
 
-/* Glitch: amber channel — clips bottom half */
+/* Glitch: crimson channel — clips bottom half */
 .title-glitch::after {
   content: attr(data-text);
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  color: var(--amber);
+  color: var(--crimson);
   z-index: -1;
   clip-path: inset(55% 0 0 0);
   opacity: 0;
@@ -212,14 +212,14 @@
 @keyframes titleBreath {
   0%, 100% {
     text-shadow:
-      0 0 8px var(--cyan-dim),
-      0 0 30px var(--cyan-glow);
+      0 0 8px var(--gold-dim),
+      0 0 30px var(--gold-glow);
   }
   50% {
     text-shadow:
-      0 0 12px var(--cyan-dim),
-      0 0 50px var(--cyan-glow),
-      0 0 90px var(--cyan-ghost);
+      0 0 12px var(--gold-dim),
+      0 0 50px var(--gold-glow),
+      0 0 90px var(--gold-ghost);
   }
 }
 
@@ -249,13 +249,13 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    var(--cyan-dim) 20%,
-    var(--cyan) 50%,
-    var(--cyan-dim) 80%,
+    var(--gold-dim) 20%,
+    var(--gold) 50%,
+    var(--gold-dim) 80%,
     transparent 100%
   );
   animation: ruleBreath 3.5s ease-in-out infinite;
-  box-shadow: 0 0 8px var(--cyan-glow);
+  box-shadow: 0 0 8px var(--gold-glow);
 }
 
 @keyframes ruleBreath {
@@ -267,14 +267,14 @@
 
 .subtitle {
   font-size: clamp(0.7rem, 1.5vw, 1rem);
-  color: var(--cyan);
+  color: var(--green);
   letter-spacing: 0.75em;
   text-align: center;
   margin: 0;
   text-transform: uppercase;
   font-weight: 400;
-  opacity: 0.6;
-  text-shadow: 0 0 6px var(--cyan-glow);
+  opacity: 0.7;
+  text-shadow: 0 0 6px var(--green-dim);
 }
 
 /* ── Play button ───────────────────────────────────────── */
@@ -283,8 +283,8 @@
   margin-top: 52px;
   padding: 14px 52px;
   background: rgba(13, 17, 23, 0.75);
-  border: 1px solid var(--cyan-dim);
-  color: var(--cyan);
+  border: 1px solid var(--gold-dim);
+  color: var(--gold);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.95rem;
   font-weight: 600;
@@ -308,7 +308,7 @@
   background: linear-gradient(
     135deg,
     transparent 30%,
-    var(--cyan-ghost) 50%,
+    var(--gold-ghost) 50%,
     transparent 70%
   );
   opacity: 0;
@@ -316,11 +316,11 @@
 }
 
 .play-btn:hover {
-  border-color: var(--cyan);
+  border-color: var(--gold);
   box-shadow:
-    0 0 16px var(--cyan-glow),
-    inset 0 0 16px var(--cyan-ghost);
-  color: var(--cyan-bright);
+    0 0 16px var(--gold-glow),
+    inset 0 0 16px var(--gold-ghost);
+  color: var(--gold-bright);
 }
 
 .play-btn:hover .play-btn-glow {
@@ -329,7 +329,7 @@
 
 .play-btn:active {
   transform: translateY(1px);
-  box-shadow: 0 0 8px var(--cyan-glow);
+  box-shadow: 0 0 8px var(--gold-glow);
 }
 
 /* Idle pulse ring */
@@ -337,7 +337,7 @@
   content: '';
   position: absolute;
   inset: -2px;
-  border: 1px solid var(--cyan);
+  border: 1px solid var(--gold);
   border-radius: 1px;
   opacity: 0;
   animation: btnRing 3s ease-in-out infinite;
@@ -366,7 +366,7 @@
   right: 24px;
   background: transparent;
   border: none;
-  color: var(--cyan);
+  color: var(--gold);
   font-size: 1.4rem;
   cursor: pointer;
   padding: 8px;
@@ -383,7 +383,7 @@
 
 .settings-gear:hover {
   opacity: 1 !important;
-  text-shadow: 0 0 12px var(--cyan-dim);
+  text-shadow: 0 0 12px var(--gold-dim);
   transform: rotate(45deg);
 }
 
@@ -413,7 +413,7 @@
   font-family: 'IBM Plex Mono', monospace;
   border-radius: 2px;
   box-shadow:
-    0 0 40px rgba(78, 205, 196, 0.04),
+    0 0 40px rgba(201, 162, 39, 0.04),
     0 4px 32px rgba(0, 0, 0, 0.5);
 }
 
@@ -428,13 +428,13 @@
   background: linear-gradient(
     90deg,
     transparent,
-    var(--cyan-dim),
+    var(--gold-dim),
     transparent
   );
 }
 
 .modal-title {
-  color: var(--cyan);
+  color: var(--gold);
   text-align: center;
   margin: 0 0 28px;
   font-size: 0.85rem;
@@ -459,7 +459,7 @@
 }
 
 .modal-close:hover {
-  color: var(--cyan);
+  color: var(--gold);
 }
 
 /* ── Input groups ──────────────────────────────────────── */
@@ -470,7 +470,7 @@
 
 .input-group label {
   display: block;
-  color: var(--cyan);
+  color: var(--gold);
   font-size: 0.7rem;
   margin-bottom: 8px;
   letter-spacing: 0.12em;
@@ -499,8 +499,8 @@
 }
 
 .input-group input:focus {
-  border-color: var(--cyan);
-  box-shadow: 0 0 0 1px var(--cyan-ghost), 0 0 12px var(--cyan-ghost);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold-ghost), 0 0 12px var(--gold-ghost);
 }
 
 .input-group input::placeholder {
@@ -524,7 +524,7 @@
 }
 
 .toggle-visibility:hover {
-  color: var(--cyan);
+  color: var(--gold);
 }
 
 /* ── Save button ───────────────────────────────────────── */
@@ -533,9 +533,9 @@
   width: 100%;
   margin-top: 10px;
   padding: 11px 24px;
-  background: var(--cyan-ghost);
-  border: 1px solid var(--cyan-dim);
-  color: var(--cyan);
+  background: var(--gold-ghost);
+  border: 1px solid var(--gold-dim);
+  color: var(--gold);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.8rem;
   font-weight: 600;
@@ -547,9 +547,9 @@
 }
 
 .save-btn:hover {
-  background: rgba(78, 205, 196, 0.12);
-  border-color: var(--cyan);
-  box-shadow: 0 0 16px var(--cyan-ghost);
+  background: rgba(201, 162, 39, 0.12);
+  border-color: var(--gold);
+  box-shadow: 0 0 16px var(--gold-ghost);
 }
 
 .save-btn:active {

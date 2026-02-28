@@ -47,9 +47,9 @@ function createEmber(w: number, h: number): Particle {
   };
 }
 
-// Cyan sparks — fast, short-lived, glitchy energy
+// Arcane sparks — fast, short-lived, violet/purple energy
 function createSpark(w: number, h: number): Particle {
-  const bright = Math.random() > 0.8;
+  const bright = Math.random() > 0.75;
   return {
     x: rand(w * 0.1, w * 0.9),
     y: rand(h * 0.1, h * 0.9),
@@ -58,14 +58,14 @@ function createSpark(w: number, h: number): Particle {
     life: 0,
     maxLife: rand(12, 45),
     size: rand(0.8, 2.2),
-    r: bright ? randInt(140, 180) : randInt(60, 90),
-    g: bright ? randInt(220, 245) : randInt(190, 215),
-    b: bright ? randInt(215, 235) : randInt(180, 200),
+    r: bright ? randInt(160, 200) : randInt(100, 140),
+    g: bright ? randInt(60, 100) : randInt(30, 70),
+    b: bright ? randInt(200, 240) : randInt(160, 200),
     type: 'spark',
   };
 }
 
-// Green motes — slow floating toxic pollen
+// Green motes — slow floating sickly spores
 function createMote(w: number, h: number): Particle {
   return {
     x: rand(0, w),
@@ -75,9 +75,9 @@ function createMote(w: number, h: number): Particle {
     life: 0,
     maxLife: rand(320, 550),
     size: rand(1, 2.5),
-    r: randInt(50, 90),
-    g: randInt(160, 200),
-    b: randInt(50, 90),
+    r: randInt(60, 100),
+    g: randInt(120, 160),
+    b: randInt(20, 50),
     type: 'mote',
   };
 }
