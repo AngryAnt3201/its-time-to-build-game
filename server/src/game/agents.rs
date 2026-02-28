@@ -3,7 +3,7 @@ use rand::Rng;
 
 use crate::ecs::components::{
     Agent, AgentMorale, AgentName, AgentState, AgentStats, AgentTier, AgentVibeConfig, AgentXP,
-    Assignment, Collider, Health, Position, TokenEconomy, Velocity, VoiceProfile,
+    Assignment, Collider, Health, Position, TokenEconomy, Velocity, VoiceProfile, WanderState,
 };
 use crate::protocol::{AgentStateKind, AgentTierKind, TaskAssignment};
 
@@ -136,6 +136,14 @@ pub fn recruit_agent(
             y: spawn_y,
         },
         Velocity::default(),
+        WanderState {
+            home_x: spawn_x,
+            home_y: spawn_y,
+            waypoint_x: spawn_x + (rand::random::<f32>() - 0.5) * 240.0,
+            waypoint_y: spawn_y + (rand::random::<f32>() - 0.5) * 240.0,
+            pause_remaining: (rand::random::<f32>() * 40.0) as u32 + 20,
+            wander_radius: 120.0,
+        },
         Collider { radius: 5.0 },
         Health {
             current: resilience,
