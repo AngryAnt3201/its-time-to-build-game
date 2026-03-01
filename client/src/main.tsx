@@ -27,6 +27,7 @@ import { TerminalOverlay } from './ui/terminal-overlay';
 import { AgentWorldTooltip, type AgentWorldData } from './ui/agent-world-tooltip';
 import { ChestWorldTooltip, type ChestTooltipCallbacks } from './ui/chest-world-tooltip';
 import { CombatVFX } from './renderer/combat-vfx';
+import { CityProgress } from './ui/city-progress';
 import { ALL_BUILDINGS, TIER_NAMES, buildingTypeToId as buildingIdFromType } from './data/buildings';
 import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta, BuildingTypeKind } from './network/protocol';
 import { AudioManager } from './audio/manager';
@@ -174,6 +175,7 @@ async function startGame() {
   const debugPanel = new DebugPanel();
   const minimap = new Minimap();
   const hotbarTooltip = new HotbarTooltip();
+  const cityProgress = new CityProgress();
 
   // ── Persistent entity map (tracks buildings across ticks) ─────────
   const entityMap: Map<number, EntityDelta> = new Map();
@@ -388,6 +390,7 @@ async function startGame() {
   uiContainer.addChild(equipmentHud.tooltipContainer); // tooltip on top of all UI
   uiContainer.addChild(agentsHud.tooltipContainer);    // agent tooltip on top of all UI
 
+  uiContainer.addChild(cityProgress.container);
   uiContainer.addChild(combatVFX.screenLayer);          // vignette overlay
   const deathScreen = new DeathScreen();
   uiContainer.addChild(deathScreen.container);
@@ -406,6 +409,7 @@ async function startGame() {
   equipmentHud.resize(screenWidth, screenHeight);
   inventoryHud.resize(screenWidth, screenHeight);
   minimap.resize(screenWidth, screenHeight);
+  cityProgress.resize(screenWidth, screenHeight);
 
   // ── Handle window resize ────────────────────────────────────────
   window.addEventListener('resize', () => {
@@ -420,6 +424,7 @@ async function startGame() {
     equipmentHud.resize(w, h);
     inventoryHud.resize(w, h);
     minimap.resize(w, h);
+    cityProgress.resize(w, h);
   });
 
   // ── Network connection ──────────────────────────────────────────
@@ -1423,6 +1428,12 @@ async function startGame() {
 
       // Update HUD with player snapshot and economy
       hud.update(state.player, state.economy);
+
+      // Update city progress bar with total stars
+      cityProgress.update(
+        state.project_manager?.building_grades,
+        state.wheel?.tier,
+      );
 
       // Update debug panel with live server state
       debugPanel.updateState(state.debug);
