@@ -4,7 +4,7 @@ import '@xterm/xterm/css/xterm.css';
 
 export interface TerminalOverlayCallbacks {
   onInput: (agentId: number, data: string) => void;
-  checkPylonProximity: (buildingId: string) => boolean;
+  checkPylonProximity: (agentId: number) => boolean;
 }
 
 interface TerminalInstance {
@@ -15,7 +15,6 @@ interface TerminalInstance {
   agentName: string;
   buildingName: string;
   ended: boolean;
-  lastResponseLines: string[];
 }
 
 export class TerminalOverlay {
@@ -27,16 +26,14 @@ export class TerminalOverlay {
   private terminalEl: HTMLDivElement;
   private callbacks: TerminalOverlayCallbacks;
 
-  private blindBanner: HTMLDivElement;
-  private blindResponseArea: HTMLPreElement;
-  private blindInputRow: HTMLDivElement;
-  private blindInput: HTMLInputElement;
-  private blindSendBtn: HTMLButtonElement;
+  private countdownBanner: HTMLDivElement;
+  private countdownSeconds = 10;
+  private countdownInterval: ReturnType<typeof setInterval> | null = null;
 
   private instances: Map<number, TerminalInstance> = new Map();
   private activeAgentId: number | null = null;
   private pinned = false;
-  private blindMode = false;
+  private noPylon = false;
   private proximityInterval: ReturnType<typeof setInterval> | null = null;
 
   visible = false;
@@ -98,97 +95,36 @@ export class TerminalOverlay {
     this.header.appendChild(this.statusEl);
     this.header.appendChild(this.closeBtn);
 
-    this.terminalEl = document.createElement('div');
-    this.terminalEl.style.cssText = 'width: 100%; height: calc(100% - 34px); overflow: hidden;';
+    // Wrapper holds both terminal and countdown overlay
+    const bodyWrapper = document.createElement('div');
+    bodyWrapper.style.cssText = 'position: relative; width: 100%; height: calc(100% - 34px); overflow: hidden;';
 
-    // ── Blind mode elements ──────────────────────────────────────
-    this.blindBanner = document.createElement('div');
-    this.blindBanner.style.cssText = `
+    this.terminalEl = document.createElement('div');
+    this.terminalEl.style.cssText = 'width: 100%; height: 100%; overflow: hidden;';
+
+    // ── Countdown banner (floats over terminal when no pylon) ────
+    this.countdownBanner = document.createElement('div');
+    this.countdownBanner.style.cssText = `
       display: none;
-      padding: 10px 14px;
-      background: #2a1a00;
-      border-bottom: 1px solid #3a3020;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 14px;
+      background: rgba(42, 26, 0, 0.9);
+      border-top: 1px solid #d4a017;
       color: #d4a017;
       font-size: 12px;
       font-family: 'IBM Plex Mono', monospace;
-      line-height: 1.5;
-    `;
-    this.blindBanner.innerHTML = '<span style="font-size: 14px;">&#9888;</span> <strong>NO SIGNAL</strong><br>Build a Pylon nearby for full terminal access';
-
-    this.blindResponseArea = document.createElement('pre');
-    this.blindResponseArea.style.cssText = `
-      display: none;
-      flex: 1;
-      margin: 0;
-      padding: 10px 14px;
-      overflow-y: auto;
-      background: #0d0d0d;
-      color: #999;
-      font-size: 12px;
-      font-family: 'IBM Plex Mono', monospace;
-      line-height: 1.5;
-      white-space: pre-wrap;
-      word-wrap: break-word;
+      text-align: center;
+      z-index: 10;
     `;
 
-    this.blindInputRow = document.createElement('div');
-    this.blindInputRow.style.cssText = `
-      display: none;
-      padding: 8px 10px;
-      background: #1a1510;
-      border-top: 1px solid #3a3020;
-      gap: 8px;
-      align-items: center;
-    `;
-
-    this.blindInput = document.createElement('input');
-    this.blindInput.type = 'text';
-    this.blindInput.placeholder = 'Type a message...';
-    this.blindInput.style.cssText = `
-      flex: 1;
-      background: #0d0b08;
-      border: 1px solid #3a3020;
-      border-radius: 4px;
-      color: #ccc;
-      font-size: 12px;
-      font-family: 'IBM Plex Mono', monospace;
-      padding: 6px 10px;
-      outline: none;
-    `;
-    this.blindInput.addEventListener('focus', () => { this.blindInput.style.borderColor = '#d4a017'; });
-    this.blindInput.addEventListener('blur', () => { this.blindInput.style.borderColor = '#3a3020'; });
-    this.blindInput.addEventListener('keydown', (e) => {
-      e.stopPropagation(); // prevent game key handling
-      if (e.key === 'Enter') {
-        this.sendBlindInput(this.blindInput.value);
-      }
-    });
-
-    this.blindSendBtn = document.createElement('button');
-    this.blindSendBtn.textContent = 'Send';
-    this.blindSendBtn.style.cssText = `
-      background: #d4a017;
-      border: none;
-      border-radius: 4px;
-      color: #0d0b08;
-      font-size: 11px;
-      font-weight: bold;
-      font-family: 'IBM Plex Mono', monospace;
-      padding: 6px 14px;
-      cursor: pointer;
-    `;
-    this.blindSendBtn.addEventListener('click', () => {
-      this.sendBlindInput(this.blindInput.value);
-    });
-
-    this.blindInputRow.appendChild(this.blindInput);
-    this.blindInputRow.appendChild(this.blindSendBtn);
+    bodyWrapper.appendChild(this.terminalEl);
+    bodyWrapper.appendChild(this.countdownBanner);
 
     this.container.appendChild(this.header);
-    this.container.appendChild(this.terminalEl);
-    this.container.appendChild(this.blindBanner);
-    this.container.appendChild(this.blindResponseArea);
-    this.container.appendChild(this.blindInputRow);
+    this.container.appendChild(bodyWrapper);
 
     document.body.appendChild(this.container);
   }
@@ -219,14 +155,10 @@ export class TerminalOverlay {
         }
       });
 
-      instance = { terminal, fitAddon, agentId, buildingId, agentName, buildingName, ended: false, lastResponseLines: [] };
+      instance = { terminal, fitAddon, agentId, buildingId, agentName, buildingName, ended: false };
       this.instances.set(agentId, instance);
     }
     return instance;
-  }
-
-  private static stripAnsi(text: string): string {
-    return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
   }
 
   writeOutput(agentId: number, data: Uint8Array): void {
@@ -236,21 +168,6 @@ export class TerminalOverlay {
     }
     instance.terminal.write(data);
     instance.terminal.scrollToBottom();
-
-    // Capture ANSI-stripped lines for blind mode
-    const text = new TextDecoder().decode(data);
-    const stripped = TerminalOverlay.stripAnsi(text);
-    const newLines = stripped.split('\n').filter(l => l.trim().length > 0);
-    instance.lastResponseLines.push(...newLines);
-    // Keep only the last 20 lines
-    if (instance.lastResponseLines.length > 20) {
-      instance.lastResponseLines = instance.lastResponseLines.slice(-20);
-    }
-
-    // Update blind mode display if active and this is the visible agent
-    if (this.blindMode && this.activeAgentId === agentId) {
-      this.updateBlindResponseArea(instance);
-    }
   }
 
   /** Open the terminal pinned and centered on screen for a specific agent. */
@@ -290,13 +207,10 @@ export class TerminalOverlay {
     }
 
     // Mount terminal — only call open() once per instance.
-    // On subsequent opens, re-attach the existing element to preserve scrollback.
     if (!instance.terminal.element) {
-      // First time: open creates the DOM
       this.terminalEl.innerHTML = '';
       instance.terminal.open(this.terminalEl);
     } else if (instance.terminal.element.parentElement !== this.terminalEl) {
-      // Re-attach existing terminal DOM (preserves all state)
       this.terminalEl.innerHTML = '';
       this.terminalEl.appendChild(instance.terminal.element);
     }
@@ -304,37 +218,87 @@ export class TerminalOverlay {
     this.container.style.display = 'block';
     this.visible = true;
 
-    // Check pylon proximity and set blind mode accordingly
-    const hasCoverage = this.callbacks.checkPylonProximity(buildingId);
-    this.setBlindMode(!hasCoverage);
+    // Check pylon proximity using agent's position
+    const hasCoverage = this.callbacks.checkPylonProximity(agentId);
+    if (!hasCoverage) {
+      this.startCountdown();
+    } else {
+      this.showTerminal();
+    }
 
     // Periodic proximity re-check every 2 seconds
     if (this.proximityInterval) clearInterval(this.proximityInterval);
     this.proximityInterval = setInterval(() => {
       if (!this.pinned || this.activeAgentId === null) return;
-      const inst = this.instances.get(this.activeAgentId);
-      if (!inst) return;
-      const nowCovered = this.callbacks.checkPylonProximity(inst.buildingId);
-      if (nowCovered && this.blindMode) {
-        this.setBlindMode(false);
-      } else if (!nowCovered && !this.blindMode) {
-        this.setBlindMode(true);
+      const nowCovered = this.callbacks.checkPylonProximity(this.activeAgentId);
+      if (nowCovered && this.noPylon) {
+        // Pylon was built — cancel countdown and show terminal
+        this.cancelCountdown();
+        this.showTerminal();
+      } else if (!nowCovered && !this.noPylon) {
+        this.startCountdown();
       }
     }, 2000);
+  }
 
-    // Fit to fill container, scroll to bottom, and focus
-    if (!this.blindMode) {
+  private showTerminal(): void {
+    this.noPylon = false;
+    this.cancelCountdown();
+    this.countdownBanner.style.display = 'none';
+    const inst = this.activeAgentId !== null ? this.instances.get(this.activeAgentId) : null;
+    if (inst) {
       requestAnimationFrame(() => {
-        instance.fitAddon.fit();
-        instance.terminal.scrollToBottom();
-        instance.terminal.focus();
+        inst.fitAddon.fit();
+        inst.terminal.scrollToBottom();
+        inst.terminal.focus();
       });
     }
   }
 
+  private startCountdown(): void {
+    this.noPylon = true;
+    this.countdownSeconds = 10;
+    this.countdownBanner.style.display = 'block';
+    this.updateCountdownDisplay();
+
+    // Terminal stays visible — fit and show it
+    const inst = this.activeAgentId !== null ? this.instances.get(this.activeAgentId) : null;
+    if (inst) {
+      requestAnimationFrame(() => {
+        inst.fitAddon.fit();
+        inst.terminal.scrollToBottom();
+        inst.terminal.focus();
+      });
+    }
+
+    this.cancelCountdown();
+    this.countdownInterval = setInterval(() => {
+      this.countdownSeconds--;
+      if (this.countdownSeconds <= 0) {
+        this.cancelCountdown();
+        this.close();
+      } else {
+        this.updateCountdownDisplay();
+      }
+    }, 1000);
+  }
+
+  private cancelCountdown(): void {
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+  }
+
+  private updateCountdownDisplay(): void {
+    this.countdownBanner.innerHTML =
+      `&#9888; <strong>NO PYLON SIGNAL</strong> \u2014 closing in <span style="color: #c44; font-size: 14px;">${this.countdownSeconds}s</span>`;
+  }
+
   close(): void {
     this.pinned = false;
-    this.blindMode = false;
+    this.noPylon = false;
+    this.cancelCountdown();
     this.container.style.display = 'none';
     this.visible = false;
     this.activeAgentId = null;
@@ -372,61 +336,8 @@ export class TerminalOverlay {
     return this.instances.has(agentId);
   }
 
-  private setBlindMode(blind: boolean): void {
-    this.blindMode = blind;
-    if (blind) {
-      this.terminalEl.style.display = 'none';
-      this.blindBanner.style.display = 'block';
-      this.blindResponseArea.style.display = 'block';
-      this.blindInputRow.style.display = 'flex';
-      // Use flex layout for the container so the response area fills space
-      this.container.style.display = 'flex';
-      this.container.style.flexDirection = 'column';
-      // Populate response area with current buffer
-      const inst = this.activeAgentId !== null ? this.instances.get(this.activeAgentId) : null;
-      if (inst) this.updateBlindResponseArea(inst);
-      // Focus the input
-      requestAnimationFrame(() => this.blindInput.focus());
-    } else {
-      this.terminalEl.style.display = 'block';
-      this.blindBanner.style.display = 'none';
-      this.blindResponseArea.style.display = 'none';
-      this.blindInputRow.style.display = 'none';
-      // Restore block layout for xterm
-      this.container.style.display = 'block';
-      this.container.style.flexDirection = '';
-      const inst = this.activeAgentId !== null ? this.instances.get(this.activeAgentId) : null;
-      if (inst) {
-        requestAnimationFrame(() => {
-          inst.fitAddon.fit();
-          inst.terminal.scrollToBottom();
-          inst.terminal.focus();
-        });
-      }
-    }
-  }
-
-  private updateBlindResponseArea(instance: TerminalInstance): void {
-    this.blindResponseArea.textContent = instance.lastResponseLines.join('\n');
-    this.blindResponseArea.scrollTop = this.blindResponseArea.scrollHeight;
-  }
-
-  private sendBlindInput(text: string): void {
-    if (!text.trim() || this.activeAgentId === null) return;
-    this.callbacks.onInput(this.activeAgentId, text + '\r');
-    this.blindInput.value = '';
-    // Visual feedback in the response area
-    const inst = this.instances.get(this.activeAgentId);
-    if (inst) {
-      inst.lastResponseLines.push(`> ${text}`);
-      if (inst.lastResponseLines.length > 20) {
-        inst.lastResponseLines = inst.lastResponseLines.slice(-20);
-      }
-      this.updateBlindResponseArea(inst);
-    }
-  }
-
   destroy(): void {
+    this.cancelCountdown();
     if (this.proximityInterval) {
       clearInterval(this.proximityInterval);
       this.proximityInterval = null;

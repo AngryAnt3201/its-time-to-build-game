@@ -1,5 +1,5 @@
 import { Assets, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
-import { ALL_MATERIALS, getBlueprintForBuilding } from '../data/crafting';
+import { ALL_MATERIALS, ALL_RECIPES, BLUEPRINTS, getBlueprintForBuilding } from '../data/crafting';
 import type { BuildingTypeKind } from '../network/protocol';
 
 // ── Style constants ──────────────────────────────────────────────────
@@ -31,6 +31,38 @@ const countStyle = new TextStyle({
   fontWeight: 'bold',
   fill: 0xd4a017,
 });
+
+// ── Tooltip styles ─────────────────────────────────────────────────
+
+const tooltipNameStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 12,
+  fontWeight: 'bold',
+  fill: 0xd4a017,
+});
+
+const tooltipSubStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 10,
+  fontStyle: 'italic',
+  fill: 0x8a7a5a,
+});
+
+const tooltipDescStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 10,
+  fill: 0x9a9a8a,
+  wordWrap: true,
+  wordWrapWidth: 180,
+});
+
+const tooltipQtyStyle = new TextStyle({
+  fontFamily: FONT,
+  fontSize: 9,
+  fill: 0x6a8a6a,
+});
+
+const TOOLTIP_W = 230;
 
 // ── Layout ──────────────────────────────────────────────────────────
 
@@ -78,11 +110,21 @@ interface InventorySlot {
 
 export class InventoryHUD {
   readonly container: Container;
+  readonly tooltipContainer: Container;
 
   private slots: (InventorySlot | null)[] = new Array(COLS * ROWS).fill(null);
   private slotContainers: Container[] = [];
   private panelBg: Graphics;
   private brackets: Graphics;
+
+  // Tooltip elements
+  private tooltipBg: Graphics;
+  private tooltipBrackets: Graphics;
+  private tooltipIcon: Sprite | null = null;
+  private tooltipName: Text;
+  private tooltipSub: Text;
+  private tooltipDesc: Text;
+  private tooltipQty: Text;
 
   // Texture cache for item icons
   private textures: Map<string, Texture> = new Map();
@@ -109,6 +151,36 @@ export class InventoryHUD {
     // Build grid
     this.buildGrid();
     this.drawPanel();
+
+    // ── Tooltip (separate container, added to UI root for z-order) ──
+    this.tooltipContainer = new Container();
+    this.tooltipContainer.label = 'inventory-tooltip';
+    this.tooltipContainer.visible = false;
+
+    this.tooltipBg = new Graphics();
+    this.tooltipContainer.addChild(this.tooltipBg);
+
+    this.tooltipBrackets = new Graphics();
+    this.tooltipContainer.addChild(this.tooltipBrackets);
+
+    this.tooltipName = new Text({ text: '', style: tooltipNameStyle });
+    this.tooltipName.x = 10;
+    this.tooltipName.y = 8;
+    this.tooltipContainer.addChild(this.tooltipName);
+
+    this.tooltipSub = new Text({ text: '', style: tooltipSubStyle });
+    this.tooltipSub.x = 10;
+    this.tooltipSub.y = 24;
+    this.tooltipContainer.addChild(this.tooltipSub);
+
+    this.tooltipDesc = new Text({ text: '', style: tooltipDescStyle });
+    this.tooltipDesc.x = 10;
+    this.tooltipDesc.y = 40;
+    this.tooltipContainer.addChild(this.tooltipDesc);
+
+    this.tooltipQty = new Text({ text: '', style: tooltipQtyStyle });
+    this.tooltipQty.x = 10;
+    this.tooltipContainer.addChild(this.tooltipQty);
 
     // Pre-load item textures
     this.loadTextures();
@@ -253,9 +325,18 @@ export class InventoryHUD {
         const slotC = new Container();
         slotC.x = PADDING + col * (SLOT_SIZE + SLOT_GAP);
         slotC.y = 24 + row * (SLOT_SIZE + SLOT_GAP);
+        slotC.eventMode = 'static';
+        slotC.cursor = 'pointer';
+        slotC.hitArea = { contains: (x: number, y: number) => x >= 0 && x <= SLOT_SIZE && y >= 0 && y <= SLOT_SIZE };
         this.container.addChild(slotC);
         this.slotContainers.push(slotC);
         this.drawEmptySlot(slotC);
+
+        // Hover events
+        const idx = i;
+        slotC.on('pointerover', () => this.showTooltip(idx));
+        slotC.on('pointerout', () => this.hideTooltip());
+        slotC.on('pointermove', (e) => this.moveTooltip(e.globalX, e.globalY));
       }
     }
   }
@@ -340,5 +421,104 @@ export class InventoryHUD {
       badge.y = SLOT_SIZE - badge.height - 1;
       slotC.addChild(badge);
     }
+  }
+
+  // ── Tooltip ──────────────────────────────────────────────────────
+
+  private getItemInfo(itemType: string): { name: string; sub: string; description: string } | null {
+    if (itemType.startsWith('material:')) {
+      const id = itemType.slice('material:'.length);
+      const mat = ALL_MATERIALS.find(m => m.id === id);
+      if (mat) {
+        const rarityLabel = mat.rarity.charAt(0).toUpperCase() + mat.rarity.slice(1);
+        return {
+          name: mat.name,
+          sub: `${rarityLabel} Material`,
+          description: mat.description,
+        };
+      }
+    }
+    if (itemType.startsWith('blueprint:')) {
+      const buildingType = itemType.slice('blueprint:'.length) as BuildingTypeKind;
+      const recipe = ALL_RECIPES.find(r => r.result === buildingType && r.category === 'app');
+      const bp = BLUEPRINTS.find(b => b.buildingType === buildingType);
+      if (bp) {
+        return {
+          name: `${recipe?.name ?? buildingType} Blueprint`,
+          sub: 'Building Blueprint',
+          description: recipe?.description ?? 'A blueprint for constructing a building.',
+        };
+      }
+    }
+    return null;
+  }
+
+  private showTooltip(slotIndex: number): void {
+    const slot = this.slots[slotIndex];
+    if (!slot) return;
+
+    const info = this.getItemInfo(slot.itemType);
+    if (!info) return;
+
+    this.tooltipName.text = info.name;
+    this.tooltipSub.text = info.sub;
+    this.tooltipDesc.text = info.description;
+    this.tooltipQty.text = `Qty: ${slot.count}`;
+
+    // Remove old icon if present
+    if (this.tooltipIcon) {
+      this.tooltipContainer.removeChild(this.tooltipIcon);
+      this.tooltipIcon.destroy();
+      this.tooltipIcon = null;
+    }
+
+    // Add item icon in tooltip
+    const tex = this.textures.get(slot.itemType);
+    const iconSize = 24;
+    const textOffsetX = tex ? iconSize + 14 : 10;
+
+    if (tex) {
+      this.tooltipIcon = new Sprite(tex);
+      this.tooltipIcon.width = iconSize;
+      this.tooltipIcon.height = iconSize;
+      this.tooltipIcon.x = 10;
+      this.tooltipIcon.y = 8;
+      this.tooltipContainer.addChild(this.tooltipIcon);
+    }
+
+    // Reposition text to the right of the icon
+    this.tooltipName.x = textOffsetX;
+    this.tooltipName.y = 8;
+    this.tooltipSub.x = textOffsetX;
+    this.tooltipSub.y = 24;
+    this.tooltipDesc.x = 10;
+    this.tooltipDesc.y = 42;
+
+    // Position qty below desc
+    const descBottom = this.tooltipDesc.y + this.tooltipDesc.height;
+    this.tooltipQty.y = descBottom + 6;
+
+    // Resize tooltip background
+    const tooltipH = this.tooltipQty.y + this.tooltipQty.height + 10;
+
+    this.tooltipBg.clear();
+    this.tooltipBg.roundRect(0, 0, TOOLTIP_W, tooltipH, 3);
+    this.tooltipBg.fill({ color: 0x0d0b08, alpha: 0.94 });
+    this.tooltipBg.roundRect(0, 0, TOOLTIP_W, tooltipH, 3);
+    this.tooltipBg.stroke({ color: 0x3a3020, alpha: 0.7, width: 1 });
+
+    this.tooltipBrackets.clear();
+    drawCornerBrackets(this.tooltipBrackets, 0, 0, TOOLTIP_W, tooltipH, 6, 0xd4a017, 0.35);
+
+    this.tooltipContainer.visible = true;
+  }
+
+  private hideTooltip(): void {
+    this.tooltipContainer.visible = false;
+  }
+
+  private moveTooltip(globalX: number, globalY: number): void {
+    this.tooltipContainer.x = globalX + 16;
+    this.tooltipContainer.y = globalY - 20;
   }
 }

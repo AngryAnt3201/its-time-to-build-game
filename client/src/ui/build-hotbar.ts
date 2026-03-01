@@ -5,6 +5,9 @@ import { getBlueprintForBuilding } from '../data/crafting';
 /** Building types that can have multiple instances (never hidden from hotbar). */
 const STACKABLE_TYPES: Set<BuildingTypeKind> = new Set(['Pylon', 'ComputeFarm']);
 
+/** Starter buildings that are always available without crafting. */
+const STARTER_TYPES: Set<BuildingTypeKind> = new Set(['Pylon', 'ComputeFarm', 'TodoApp']);
+
 /** Calculate escalating cost: base * 1.5^count (rounded up). */
 function escalatingCost(baseCost: number, existingCount: number): number {
   return Math.ceil(baseCost * Math.pow(1.5, existingCount));
@@ -63,13 +66,18 @@ export interface HotbarEntry {
 }
 
 const DEFAULT_HOTBAR: HotbarEntry[] = [
-  { type: 'Pylon',         name: 'Pylon',    cost: 30,  key: '1' },
-  { type: 'ComputeFarm',   name: 'C.Farm',   cost: 80,  key: '2' },
-  { type: 'TodoApp',       name: 'Todo',     cost: 50,  key: '3' },
-  { type: 'Calculator',    name: 'Calc',     cost: 60,  key: '4' },
-  { type: 'LandingPage',   name: 'Landing',  cost: 40,  key: '5' },
-  { type: 'WeatherDashboard', name: 'Weather', cost: 120, key: '6' },
-  { type: 'ChatApp',       name: 'Chat',     cost: 150, key: '7' },
+  { type: 'Pylon',              name: 'Pylon',    cost: 30,  key: '1' },
+  { type: 'ComputeFarm',        name: 'C.Farm',   cost: 80,  key: '2' },
+  { type: 'TodoApp',            name: 'Todo',     cost: 50,  key: '3' },
+  { type: 'Calculator',         name: 'Calc',     cost: 60,  key: '4' },
+  { type: 'LandingPage',        name: 'Landing',  cost: 40,  key: '5' },
+  { type: 'WeatherDashboard',   name: 'Weather',  cost: 120, key: '6' },
+  { type: 'ChatApp',            name: 'Chat',     cost: 150, key: '7' },
+  { type: 'KanbanBoard',        name: 'Kanban',   cost: 130, key: '8' },
+  { type: 'EcommerceStore',     name: 'E-com',    cost: 250, key: '9' },
+  { type: 'AiImageGenerator',   name: 'AI Img',   cost: 300, key: '0' },
+  { type: 'ApiDashboard',       name: 'API',      cost: 280, key: '' },
+  { type: 'Blockchain',         name: 'Chain',    cost: 500, key: '' },
 ];
 
 // ── Corner brackets ─────────────────────────────────────────────────
@@ -110,7 +118,7 @@ export class BuildHotbar {
   /** Callback when a building is selected from the hotbar. */
   onSelect: ((entry: HotbarEntry) => void) | null = null;
 
-  private entries: HotbarEntry[] = DEFAULT_HOTBAR;
+  private entries: HotbarEntry[] = [];
   private panelBg: Graphics;
   private brackets: Graphics;
   private slotContainers: Container[] = [];
@@ -122,8 +130,8 @@ export class BuildHotbar {
   /** How many of each building type are already placed. */
   private placedBuildingCounts: Map<BuildingTypeKind, number> = new Map();
 
-  /** Which blueprint types the player owns. */
-  private ownedBlueprints: Set<string> = new Set();
+  /** Which building types the player has crafted/unlocked. */
+  private craftedBuildings: Set<string> = new Set();
 
   constructor() {
     this.container = new Container();
@@ -141,19 +149,17 @@ export class BuildHotbar {
     this.headerText.y = 4;
     this.container.addChild(this.headerText);
 
+    // Filter entries to only starter buildings before first render
+    this.recalculateEntries();
     this.buildSlots();
     this.drawPanel();
   }
 
   // ── Public API ───────────────────────────────────────────────────
 
-  /** Update which blueprints the player owns. */
-  setOwnedBlueprints(blueprintTypes: string[]): void {
-    this.ownedBlueprints = new Set(blueprintTypes);
-    // Infrastructure + starter buildings always count as "owned"
-    this.ownedBlueprints.add('Pylon');
-    this.ownedBlueprints.add('ComputeFarm');
-    this.ownedBlueprints.add('TodoApp');
+  /** Update which buildings the player has crafted / unlocked. */
+  setCraftedBuildings(buildingTypes: string[]): void {
+    this.craftedBuildings = new Set(buildingTypes);
     this.recalculateEntries();
   }
 
@@ -247,13 +253,17 @@ export class BuildHotbar {
     }
   }
 
-  /** Recalculate which entries to show based on blueprint ownership + placed buildings. */
+  /** Recalculate which entries to show based on crafted buildings + placed buildings. */
   private recalculateEntries(): void {
     const filtered = DEFAULT_HOTBAR.filter(entry => {
-      // Stackable (infrastructure) buildings always show
-      if (STACKABLE_TYPES.has(entry.type)) return true;
-      // Must own the blueprint to show in hotbar
-      if (!this.ownedBlueprints.has(entry.type)) return false;
+      // Starter buildings (infrastructure + TodoApp) always show
+      if (STARTER_TYPES.has(entry.type)) {
+        // Stackable buildings always show; non-stackable starters hide if already built
+        if (STACKABLE_TYPES.has(entry.type)) return true;
+        return (this.placedBuildingCounts.get(entry.type) ?? 0) === 0;
+      }
+      // Must have crafted the building to show in hotbar
+      if (!this.craftedBuildings.has(entry.type)) return false;
       // Non-stackable: hide if already built
       return (this.placedBuildingCounts.get(entry.type) ?? 0) === 0;
     });

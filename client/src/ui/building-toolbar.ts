@@ -65,6 +65,7 @@ export class BuildingToolbar {
   private hideTimer: ReturnType<typeof setTimeout> | null = null;
   private idleAgents: IdleAgent[] = [];
   private pickerOpen = false;
+  private lastAssignedAgents: AssignedAgent[] = [];
 
   visible = false;
   currentBuildingId = '';
@@ -85,11 +86,19 @@ export class BuildingToolbar {
       border-radius: 6px;
       padding: 8px 12px;
       font-family: 'IBM Plex Mono', monospace;
-      pointer-events: none;
+      pointer-events: auto;
       min-width: 200px;
       box-shadow: 0 0 16px rgba(212, 160, 23, 0.25);
       transform: translateX(-50%);
     `;
+
+    // Keep toolbar open while mouse is over it
+    this.container.addEventListener('mouseenter', () => {
+      this.cancelScheduledHide();
+    });
+    this.container.addEventListener('mouseleave', () => {
+      this.scheduleHide();
+    });
 
     // Header row (name + status badge)
     const header = document.createElement('div');
@@ -119,7 +128,7 @@ export class BuildingToolbar {
     // No-pylon warning
     this.noPylonEl = document.createElement('div');
     this.noPylonEl.style.cssText = 'display: none; color: #aa6633; font-size: 9px; margin-bottom: 6px; line-height: 1.3;';
-    this.noPylonEl.innerHTML = '\u26a0 <span style="color:#aa6633;">No Pylon nearby \u2014 terminal hidden</span>';
+    this.noPylonEl.innerHTML = '\u26a0 <span style="color:#aa6633;">No Pylon nearby \u2014 terminal will auto-close</span>';
 
     // Agent slots row
     this.slotsEl = document.createElement('div');
@@ -199,6 +208,7 @@ export class BuildingToolbar {
       this.statusEl.style.display = 'inline';
       this.descEl.style.display = 'none';
       this.noPylonEl.style.display = opts?.noPylon ? 'block' : 'none';
+      this.lastAssignedAgents = assignedAgents;
       this.updateSlots(assignedAgents);
       this.slotsEl.style.display = 'flex';
       this.openAppBtn.style.display = 'block';
@@ -225,6 +235,9 @@ export class BuildingToolbar {
   }
 
   scheduleHide() {
+    // Never auto-hide while the agent picker dropdown is open — the user
+    // needs to be able to move their mouse to it without the toolbar closing.
+    if (this.pickerOpen) return;
     if (this.hideTimer) return;
     this.hideTimer = setTimeout(() => {
       this.hideTimer = null;
@@ -279,8 +292,10 @@ export class BuildingToolbar {
         row.appendChild(nameSpan);
         row.appendChild(tierSpan);
 
-        row.addEventListener('click', () => {
-          this.callbacks.onAssignAgent(this.currentBuildingId, agent.id);
+        const agentId = agent.id;
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.callbacks.onAssignAgent(this.currentBuildingId, agentId);
           this.closePicker();
         });
 
@@ -295,6 +310,9 @@ export class BuildingToolbar {
   private closePicker() {
     this.pickerEl.style.display = 'none';
     this.pickerOpen = false;
+    // Refresh slots now that the picker is closed (updateSlots is skipped
+    // while the picker is open to prevent DOM thrashing during clicks).
+    this.updateSlots(this.lastAssignedAgents);
   }
 
   private updateStatusBadge(status: string) {
@@ -349,6 +367,12 @@ export class BuildingToolbar {
   }
 
   private updateSlots(assignedAgents: AssignedAgent[]) {
+    // Don't rebuild slot DOM while picker is open — DOM thrashing during a
+    // click sequence (mousedown → mousemove → mouseup) can shift hit-test
+    // targets and cause the wrong agent to be assigned.  Slots refresh
+    // automatically on the next mousemove after the picker closes.
+    if (this.pickerOpen) return;
+
     this.slotsEl.innerHTML = '';
 
     for (let i = 0; i < MAX_SLOTS; i++) {

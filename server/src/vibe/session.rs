@@ -27,9 +27,10 @@ impl VibeSession {
         agent_id: u64,
         building_id: String,
         working_dir: PathBuf,
-        model_id: String,
+        vibe_agent_name: String,
         max_turns: u32,
         api_key: String,
+        enabled_tools: Vec<String>,
         output_tx: mpsc::UnboundedSender<Vec<u8>>,
     ) -> Result<Self, String> {
         let pty_system = NativePtySystem::default();
@@ -44,10 +45,15 @@ impl VibeSession {
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
         let mut cmd = CommandBuilder::new("vibe");
+        cmd.arg("--agent");
+        cmd.arg(&vibe_agent_name);
         cmd.arg("--max-turns");
         cmd.arg(max_turns.to_string());
+        for tool in &enabled_tools {
+            cmd.arg("--enabled-tools");
+            cmd.arg(tool);
+        }
         cmd.env("MISTRAL_API_KEY", &api_key);
-        cmd.env("MISTRAL_MODEL", &model_id);
         cmd.cwd(&working_dir);
 
         let child = pty_pair
@@ -81,8 +87,8 @@ impl VibeSession {
         });
 
         info!(
-            "Vibe session spawned for agent {} on building {} (model: {}, max_turns: {})",
-            agent_id, building_id, model_id, max_turns
+            "Vibe session spawned for agent {} on building {} (agent: {}, max_turns: {}, tools: {:?})",
+            agent_id, building_id, vibe_agent_name, max_turns, enabled_tools
         );
 
         // Take the writer once and store it for reuse

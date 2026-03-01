@@ -74,8 +74,9 @@ pub fn create_world() -> (World, GameState) {
     world.insert(sol, (
         Recruitable { cost: 10 },
         AgentVibeConfig {
-            model_id: "ministral-3b-2501".to_string(),
-            model_lore_name: "ministral-3b".to_string(),
+            model_id: "devstral-small".to_string(),
+            model_lore_name: "Flickering Candle".to_string(),
+            vibe_agent_name: "game-apprentice".to_string(),
             max_turns: 5,
             turns_used: 0,
             context_window: 32000,

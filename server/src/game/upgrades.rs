@@ -232,4 +232,31 @@ impl UpgradeState {
     pub fn has(&self, id: UpgradeId) -> bool {
         self.purchased.contains(&id)
     }
+
+    /// Compute the list of vibe CLI tool names enabled by the current upgrades.
+    ///
+    /// Base tools (always enabled): read_file, grep, search_replace, write_file, todo, task
+    /// Git Access:  + bash
+    /// Web Search:  + web_search, web_fetch
+    pub fn enabled_vibe_tools(&self) -> Vec<String> {
+        let mut tools = vec![
+            "read_file".to_string(),
+            "grep".to_string(),
+            "search_replace".to_string(),
+            "write_file".to_string(),
+            "todo".to_string(),
+            "task".to_string(),
+        ];
+
+        if self.has(UpgradeId::GitAccess) {
+            tools.push("bash".to_string());
+        }
+
+        if self.has(UpgradeId::WebSearch) {
+            tools.push("web_search".to_string());
+            tools.push("web_fetch".to_string());
+        }
+
+        tools
+    }
 }

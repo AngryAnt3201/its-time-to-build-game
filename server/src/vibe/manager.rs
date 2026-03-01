@@ -43,8 +43,9 @@ impl VibeManager {
         agent_id: u64,
         building_id: String,
         working_dir: PathBuf,
-        model_id: String,
+        vibe_agent_name: String,
         max_turns: u32,
+        enabled_tools: Vec<String>,
     ) -> Result<(), String> {
         let api_key = self
             .api_key
@@ -62,9 +63,10 @@ impl VibeManager {
             agent_id,
             building_id,
             working_dir,
-            model_id,
+            vibe_agent_name,
             max_turns,
             api_key,
+            enabled_tools,
             output_tx,
         )?;
 

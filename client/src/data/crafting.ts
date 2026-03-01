@@ -15,6 +15,8 @@ export type MaterialId =
 export interface MaterialDef {
   id: MaterialId;
   name: string;
+  symbol: string;
+  description: string;
   icon: string;
   rarity: 'common' | 'uncommon' | 'rare';
   dropWeight: number;
@@ -23,12 +25,12 @@ export interface MaterialDef {
 // ── All materials ────────────────────────────────────────────────────
 
 export const ALL_MATERIALS: MaterialDef[] = [
-  { id: 'iron_powder',  name: 'Iron Powder',  icon: 'iron_powder.png',  rarity: 'common',   dropWeight: 30 },
-  { id: 'wood',         name: 'Wood',         icon: 'wood.png',         rarity: 'common',   dropWeight: 30 },
-  { id: 'metal_ring',   name: 'Metal Ring',   icon: 'metal_ring.png',   rarity: 'common',   dropWeight: 25 },
-  { id: 'ore_coin',     name: 'Ore Coin',     icon: 'ore_coin.png',     rarity: 'uncommon', dropWeight: 15 },
-  { id: 'liquid_gold',  name: 'Liquid Gold',  icon: 'liquid_gold.png',  rarity: 'uncommon', dropWeight: 12 },
-  { id: 'mana',         name: 'Mana',         icon: 'mana.png',         rarity: 'rare',     dropWeight: 8  },
+  { id: 'iron_powder',  name: 'Iron Powder',  symbol: 'ite',  description: 'Fine metallic dust refined from raw ore.',        icon: 'iron_powder.png',  rarity: 'common',   dropWeight: 30 },
+  { id: 'wood',         name: 'Wood',         symbol: 'wod',  description: 'Sturdy timber harvested from data-trees.',        icon: 'wood.png',         rarity: 'common',   dropWeight: 30 },
+  { id: 'metal_ring',   name: 'Metal Ring',   symbol: 'rng',  description: 'Forged loops of hardened steel.',                 icon: 'metal_ring.png',   rarity: 'common',   dropWeight: 25 },
+  { id: 'ore_coin',     name: 'Ore Coin',     symbol: 'ore',  description: 'Compressed ore tokens of moderate value.',        icon: 'ore_coin.png',     rarity: 'uncommon', dropWeight: 15 },
+  { id: 'liquid_gold',  name: 'Liquid Gold',  symbol: 'gld',  description: 'Molten precious metal with alchemical properties.', icon: 'liquid_gold.png', rarity: 'uncommon', dropWeight: 12 },
+  { id: 'mana',         name: 'Mana',         symbol: 'mna',  description: 'Crystallized magical energy. Rare and potent.',   icon: 'mana.png',         rarity: 'rare',     dropWeight: 8  },
 ];
 
 // ── Blueprint definition ─────────────────────────────────────────────
@@ -83,18 +85,6 @@ export interface CraftingRecipe {
 export const ALL_RECIPES: CraftingRecipe[] = [
 
   // ── Apps — Tier 1 (2-3 materials + blueprint) ────────────────────
-  {
-    id: 'app_todo',
-    category: 'app',
-    name: 'Todo App',
-    description: 'A task manager with CRUD, drag-and-drop reordering, and filters.',
-    result: 'TodoApp',
-    ingredients: [
-      { material: 'wood', count: 2 },
-      { material: 'iron_powder', count: 1 },
-    ],
-    blueprint: 'TodoApp',
-  },
   {
     id: 'app_calculator',
     category: 'app',

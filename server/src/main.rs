@@ -7,6 +7,7 @@ use its_time_to_build_server::ai::rogue_ai;
 use its_time_to_build_server::network::server::GameServer;
 use its_time_to_build_server::project;
 use its_time_to_build_server::protocol::*;
+use its_time_to_build_server::vibe::agents::ensure_vibe_agent_profiles;
 use its_time_to_build_server::vibe::manager::VibeManager;
 use its_time_to_build_server::grading;
 use tokio::time::{interval, Duration};
@@ -86,6 +87,7 @@ async fn main() {
     };
     let mut project_manager = project::ProjectManager::new(&manifest_path);
     let mut vibe_manager = VibeManager::new();
+    ensure_vibe_agent_profiles();
     let mut grading_service = grading::GradingService::new();
 
     let mut ticker = interval(TICK_DURATION);
@@ -831,10 +833,13 @@ async fn main() {
                     let aid: u64 = id.to_bits().into();
                     !vibe_manager.has_session(aid) && !vibe_manager.has_failed(aid)
                 })
-                .map(|(id, (_state, vibe))| (id.to_bits().into(), vibe.model_id.clone(), vibe.max_turns))
+                .map(|(id, (_state, vibe))| (id.to_bits().into(), vibe.vibe_agent_name.clone(), vibe.max_turns))
                 .collect();
 
-            for (agent_id, model_id, max_turns) in agents_needing_sessions {
+            // Compute enabled tools from upgrade state
+            let enabled_tools = game_state.upgrades.enabled_vibe_tools();
+
+            for (agent_id, vibe_agent_name, max_turns) in agents_needing_sessions {
                 if let Some(base) = project_manager.base_dir.as_ref() {
                     // Find which building this agent is assigned to
                     let mut found_building = None;
@@ -855,8 +860,9 @@ async fn main() {
                             agent_id,
                             bid.clone(),
                             work_dir,
-                            model_id,
+                            vibe_agent_name,
                             max_turns,
+                            enabled_tools.clone(),
                         ) {
                             Ok(()) => {
                                 debug_log_entries.push(format!(

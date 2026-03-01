@@ -5,7 +5,7 @@ import { PlayerSprite } from './renderer/player-sprite';
 import { Connection } from './network/connection';
 import { EntityRenderer } from './renderer/entities';
 import { WorldRenderer, isWalkable, hash, TILE_PX } from './renderer/world';
-import { LightingRenderer, type LightSource } from './renderer/lighting';
+import { LightingRenderer } from './renderer/lighting';
 import { HUD } from './ui/hud';
 import { AgentsHUD } from './ui/agents-hud';
 import { InventoryHUD } from './ui/inventory-hud';
@@ -33,16 +33,6 @@ import { AudioManager } from './audio/manager';
 import { getProjectDir, getProjectInitFlag, setProjectInitFlag } from './utils/project-settings';
 import { getApiKey } from './utils/api-keys';
 
-// ── Building light source lookup ─────────────────────────────────────
-// Maps building types to their light radius (in world pixels).
-// Only buildings that emit light are listed here.
-// Must be kept in sync with server/src/game/building.rs definitions.
-const BUILDING_LIGHT_RADIUS: Partial<Record<BuildingTypeKind, number>> = {
-  Pylon: 200,
-  ChatApp: 60,
-  AiImageGenerator: 80,
-  Blockchain: 70,
-};
 
 /** Convert PascalCase building type to snake_case building ID. */
 function buildingTypeToId(type: string): string {
@@ -58,6 +48,7 @@ function buildingTypeToName(type: string): string {
 
 /** Check if any building matching `buildingId` is within range of a completed Pylon. */
 function isBuildingNearPylon(buildingId: string, entityMap: Map<number, EntityDelta>): boolean {
+  const PYLON_RANGE = 200;
   const pylons: { x: number; y: number }[] = [];
   const targets: { x: number; y: number }[] = [];
 
@@ -76,13 +67,30 @@ function isBuildingNearPylon(buildingId: string, entityMap: Map<number, EntityDe
 
   if (targets.length === 0 || pylons.length === 0) return false;
 
-  const PYLON_RANGE = 200;
   for (const target of targets) {
     for (const pylon of pylons) {
       const dx = target.x - pylon.x;
       const dy = target.y - pylon.y;
       if (dx * dx + dy * dy <= PYLON_RANGE * PYLON_RANGE) return true;
     }
+  }
+  return false;
+}
+
+/** Check if a specific agent entity is near any completed Pylon. */
+function isAgentNearPylon(agentId: number, entityMap: Map<number, EntityDelta>): boolean {
+  const PYLON_RANGE = 200;
+  const agentEntity = entityMap.get(agentId);
+  if (!agentEntity) return false;
+
+  for (const entity of entityMap.values()) {
+    if (entity.kind !== 'Building') continue;
+    const data = (entity.data as { Building?: { building_type: string; construction_pct: number } }).Building;
+    if (!data || data.construction_pct < 1.0) continue;
+    if (data.building_type !== 'Pylon') continue;
+    const dx = agentEntity.position.x - entity.position.x;
+    const dy = agentEntity.position.y - entity.position.y;
+    if (dx * dx + dy * dy <= PYLON_RANGE * PYLON_RANGE) return true;
   }
   return false;
 }
@@ -268,7 +276,7 @@ async function startGame() {
         target: null,
       });
     },
-    checkPylonProximity: (buildingId) => isBuildingNearPylon(buildingId, entityMap),
+    checkPylonProximity: (agentId) => isAgentNearPylon(agentId, entityMap),
   });
 
   const agentWorldTooltip = new AgentWorldTooltip({
@@ -376,6 +384,7 @@ async function startGame() {
   uiContainer.addChild(debugPanel.container);
   uiContainer.addChild(minimap.container);
   uiContainer.addChild(minimap.tooltipContainer);
+  uiContainer.addChild(inventoryHud.tooltipContainer);  // inventory tooltip on top of all UI
   uiContainer.addChild(equipmentHud.tooltipContainer); // tooltip on top of all UI
   uiContainer.addChild(agentsHud.tooltipContainer);    // agent tooltip on top of all UI
 
@@ -662,7 +671,7 @@ async function startGame() {
 
   // ── Building hover toolbar (on window so it fires even over toolbar HTML) ──
   window.addEventListener('mousemove', (e: MouseEvent) => {
-    if (buildMenu.placementMode || buildingPanel.visible) {
+    if (buildMenu.placementMode || buildingPanel.visible || craftingModal.visible || terminalOverlay.visible) {
       if (buildingToolbar.visible) buildingToolbar.hide();
       return;
     }
@@ -753,7 +762,13 @@ async function startGame() {
     }
 
     // ── Agent hover detection (for agent world tooltip) ────────────────
-    if (!terminalOverlay.visible) {
+    // Suppress world tooltips when any modal is open (they bleed through due to higher z-index)
+    const anyModalOpen = buildingPanel.visible || craftingModal.visible || terminalOverlay.visible;
+    if (anyModalOpen) {
+      if (agentWorldTooltip.visible) agentWorldTooltip.hide();
+      if (chestWorldTooltip.visible) chestWorldTooltip.hide();
+    }
+    if (!anyModalOpen) {
       let nearestAgentId: number | null = null;
       type AgentEntityData = { name: string; tier: string; state: string; health_pct: number; morale_pct: number; stars: number; turns_used: number; max_turns: number; model_lore_name: string; xp: number; level: number; bound?: boolean; recruitable_cost?: number | null };
       let nearestAgentDist = 32; // hover range in world pixels
@@ -804,7 +819,7 @@ async function startGame() {
           recruitable_cost: nearestAgentData.recruitable_cost,
         };
 
-        const agentNoPylon = agentBuildingId ? !isBuildingNearPylon(agentBuildingId, entityMap) : false;
+        const agentNoPylon = nearestAgentData.state === 'Building' ? !isAgentNearPylon(nearestAgentId, entityMap) : false;
         agentWorldTooltip.show(agentWorldData, e.clientX, e.clientY, agentBuildingId, agentBuildingName, agentNoPylon);
         agentWorldTooltip.cancelScheduledHide();
       } else if (agentWorldTooltip.visible) {
@@ -813,7 +828,7 @@ async function startGame() {
     }
 
     // ── Chest hover detection (for chest world tooltip) ─────────────
-    if (!terminalOverlay.visible) {
+    if (!anyModalOpen) {
       const nearestChest = findNearestChest(worldX, worldY, openedChests, 24);
       if (nearestChest) {
         chestWorldTooltip.show(nearestChest.wx, nearestChest.wy, e.clientX, e.clientY);
@@ -1391,33 +1406,11 @@ async function startGame() {
         }
         buildingCountsCache = counts;
         buildHotbar.setPlacedBuildingCounts(counts);
+        buildMenu.setPlacedBuildingCounts(counts);
       }
 
-      // ── Collect all light sources (player + buildings) ──────────────
-      const lightSources: LightSource[] = [];
-
-      // Player torch
-      if (state.player.torch_range > 0) {
-        lightSources.push({ x: pos.x, y: pos.y, radius: state.player.torch_range });
-      }
-
-      // Completed buildings with light sources
-      for (const entity of entityMap.values()) {
-        if (entity.kind !== 'Building') continue;
-        const data = (entity.data as { Building?: { building_type: BuildingTypeKind; construction_pct: number } }).Building;
-        if (!data || data.construction_pct < 1.0) continue;
-        const radius = BUILDING_LIGHT_RADIUS[data.building_type];
-        if (radius) {
-          const src: LightSource = { x: entity.position.x, y: entity.position.y, radius };
-          // Pylons get a warm amber ring at their boundary
-          if (data.building_type === 'Pylon') {
-            src.ringColor = 0xffcc44;
-          }
-          lightSources.push(src);
-        }
-      }
-
-      lightingRenderer.updateLights(lightSources);
+      // Rebuild darkness overlay (no dynamic light sources)
+      lightingRenderer.rebuildDarkness();
 
       // Update grimoire with agent data from entity deltas
       grimoire.update(state.entities_changed);
@@ -1464,6 +1457,11 @@ async function startGame() {
           const grade = grades[buildingPanel.currentBuildingId];
           buildingPanel.updateGrade(grade ?? null);
         }
+
+        // Sync unlocked buildings to the build menu
+        if (state.project_manager.unlocked_buildings) {
+          buildMenu.setUnlockedBuildings(state.project_manager.unlocked_buildings);
+        }
       }
 
       // ── Sync inventory to HUDs ─────────────────────────────────────
@@ -1496,12 +1494,23 @@ async function startGame() {
         combatVFX.spawnChestRewards(pos.x, pos.y, state.chest_rewards);
       }
 
-      // ── Sync blueprint ownership to build menu & hotbar ─────────────
+      // ── Sync blueprint ownership to build menu ─────────────────────
       if (state.inventory) {
         const ownedBlueprints = state.inventory
           .filter(i => i.item_type.startsWith('blueprint:'))
           .map(i => i.item_type.slice('blueprint:'.length));
-        buildHotbar.setOwnedBlueprints(ownedBlueprints);
+        buildMenu.setOwnedBlueprints(ownedBlueprints);
+      }
+
+      // ── Sync crafted buildings to hotbar (requires actual crafting) ──
+      if (state.project_manager?.unlocked_buildings) {
+        // Convert snake_case IDs to PascalCase building types
+        const idToType = new Map<string, string>();
+        for (const b of ALL_BUILDINGS) idToType.set(buildingIdFromType(b.type), b.type);
+        const craftedTypes = state.project_manager.unlocked_buildings
+          .map(id => idToType.get(id))
+          .filter((t): t is string => t !== undefined);
+        buildHotbar.setCraftedBuildings(craftedTypes);
       }
 
       // ── Update building toolbar position to follow camera ────────

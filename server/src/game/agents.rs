@@ -115,8 +115,9 @@ fn generate_stats(tier: AgentTierKind) -> AgentStats {
 pub fn generate_vibe_config(tier: AgentTierKind) -> AgentVibeConfig {
     match tier {
         AgentTierKind::Apprentice => AgentVibeConfig {
-            model_id: "ministral-3b-2025-01".to_string(),
+            model_id: "devstral-small".to_string(),
             model_lore_name: "Flickering Candle".to_string(),
+            vibe_agent_name: "game-apprentice".to_string(),
             max_turns: 5,
             turns_used: 0,
             context_window: 128_000,
@@ -125,8 +126,9 @@ pub fn generate_vibe_config(tier: AgentTierKind) -> AgentVibeConfig {
             stars: 1,
         },
         AgentTierKind::Journeyman => AgentVibeConfig {
-            model_id: "ministral-8b-2025-01".to_string(),
+            model_id: "devstral-small".to_string(),
             model_lore_name: "Steady Flame".to_string(),
+            vibe_agent_name: "game-journeyman".to_string(),
             max_turns: 15,
             turns_used: 0,
             context_window: 128_000,
@@ -135,8 +137,9 @@ pub fn generate_vibe_config(tier: AgentTierKind) -> AgentVibeConfig {
             stars: 2,
         },
         AgentTierKind::Artisan => AgentVibeConfig {
-            model_id: "codestral-2025-05".to_string(),
+            model_id: "devstral-2".to_string(),
             model_lore_name: "Codestral Engine".to_string(),
+            vibe_agent_name: "game-artisan".to_string(),
             max_turns: 30,
             turns_used: 0,
             context_window: 256_000,
@@ -145,8 +148,9 @@ pub fn generate_vibe_config(tier: AgentTierKind) -> AgentVibeConfig {
             stars: 3,
         },
         AgentTierKind::Architect => AgentVibeConfig {
-            model_id: "devstral-2-2025-07".to_string(),
+            model_id: "devstral-2".to_string(),
             model_lore_name: "Abyssal Architect".to_string(),
+            vibe_agent_name: "game-architect".to_string(),
             max_turns: 50,
             turns_used: 0,
             context_window: 256_000,

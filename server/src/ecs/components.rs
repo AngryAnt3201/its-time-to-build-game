@@ -171,6 +171,9 @@ pub struct VoiceProfile {
 pub struct AgentVibeConfig {
     pub model_id: String,
     pub model_lore_name: String,
+    /// The name of the custom vibe agent profile (e.g. "game-apprentice").
+    /// Used as `--agent <name>` when spawning the vibe CLI.
+    pub vibe_agent_name: String,
     pub max_turns: u32,
     pub turns_used: u32,
     pub context_window: u32,

@@ -284,7 +284,7 @@ export class AgentWorldTooltip {
     if (noPylon && buildingId) {
       const noPylonEl = document.createElement('div');
       noPylonEl.style.cssText = 'color: #aa6633; font-size: 9px; margin-bottom: 6px; line-height: 1.3;';
-      noPylonEl.innerHTML = '\u26a0 No Pylon nearby \u2014 terminal hidden';
+      noPylonEl.innerHTML = '\u26a0 No Pylon nearby \u2014 terminal will auto-close';
       this.container.appendChild(noPylonEl);
     }
 
