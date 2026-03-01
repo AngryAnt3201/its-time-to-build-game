@@ -201,6 +201,8 @@ pub struct EconomySnapshot {
     pub balance: i64,
     pub income_per_sec: f64,
     pub expenditure_per_sec: f64,
+    pub income_sources: Vec<(String, f64)>,
+    pub expenditure_sinks: Vec<(String, f64)>,
 }
 
 // ── Wheel snapshot ────────────────────────────────────────
@@ -316,6 +318,7 @@ pub enum PlayerAction {
 
     // Home base actions
     RecruitAgent { entity_id: u64 },
+    ReviveAgent { entity_id: u64 },
     UpgradeWheel,
     AssignAgentToWheel { agent_id: u64 },
     UnassignAgentFromWheel,

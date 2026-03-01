@@ -119,6 +119,11 @@ export class HUD {
 
   private loaded = false;
 
+  // Economy tooltip
+  private tooltipEl: HTMLDivElement;
+  private lastEconomy: EconomySnapshot | null = null;
+  private tooltipVisible = false;
+
   constructor() {
     this.container = new Container();
     this.container.label = 'hud';
@@ -191,6 +196,41 @@ export class HUD {
 
     // Load icon assets
     this.loadIcons();
+
+    // ── Economy tooltip (HTML overlay) ───────────────────────────
+    this.tooltipEl = document.createElement('div');
+    this.tooltipEl.id = 'economy-tooltip';
+    this.tooltipEl.style.cssText = `
+      display: none;
+      position: fixed;
+      z-index: 999;
+      background: #1a1510;
+      border: 1px solid #d4a017;
+      border-radius: 4px;
+      padding: 10px 14px;
+      font-family: 'IBM Plex Mono', monospace;
+      pointer-events: none;
+      min-width: 200px;
+      max-width: 300px;
+      box-shadow: 0 0 12px rgba(212, 160, 23, 0.2);
+      font-size: 11px;
+      line-height: 1.5;
+    `;
+    document.body.appendChild(this.tooltipEl);
+
+    // Hover detection: token area is roughly the top part of the HUD panel
+    const PANEL_X = 6, PANEL_Y = 6, PANEL_W = 220, TOKEN_SECTION_H = 62;
+    document.addEventListener('mousemove', (e: MouseEvent) => {
+      const mx = e.clientX;
+      const my = e.clientY;
+      const over = mx >= PANEL_X && mx <= PANEL_X + PANEL_W
+                && my >= PANEL_Y && my <= PANEL_Y + TOKEN_SECTION_H;
+      if (over && this.lastEconomy) {
+        this.showTooltip(PANEL_X + PANEL_W + 8, PANEL_Y);
+      } else if (!over && this.tooltipVisible) {
+        this.hideTooltip();
+      }
+    });
   }
 
   // ── Asset loading ───────────────────────────────────────────────
@@ -262,9 +302,93 @@ export class HUD {
     }
   }
 
+  // ── Tooltip helpers ─────────────────────────────────────────────
+
+  private showTooltip(x: number, y: number): void {
+    const eco = this.lastEconomy;
+    if (!eco) return;
+
+    // Aggregate income sources by name
+    const incomeMap = new Map<string, { total: number; count: number }>();
+    for (const [name, val] of eco.income_sources) {
+      const entry = incomeMap.get(name);
+      if (entry) { entry.total += val; entry.count++; }
+      else incomeMap.set(name, { total: val, count: 1 });
+    }
+
+    // Aggregate expenditure sinks by name
+    const expMap = new Map<string, { total: number; count: number }>();
+    for (const [name, val] of eco.expenditure_sinks) {
+      const entry = expMap.get(name);
+      if (entry) { entry.total += val; entry.count++; }
+      else expMap.set(name, { total: val, count: 1 });
+    }
+
+    const fmt = (v: number) => v % 1 === 0 ? v.toString() : v.toFixed(1);
+
+    let html = '';
+
+    // Income section
+    html += `<div style="color:#d4a017;font-weight:bold;margin-bottom:4px;">GENERATION</div>`;
+    if (incomeMap.size === 0) {
+      html += `<div style="color:#5a5a4a;font-style:italic;">No income sources</div>`;
+    } else {
+      for (const [name, { total, count }] of incomeMap) {
+        const label = count > 1 ? `${name} x${count}` : name;
+        html += `<div style="display:flex;justify-content:space-between;">`;
+        html += `<span style="color:#9a9a7a;">${label}</span>`;
+        html += `<span style="color:#5a9a4a;">+${fmt(total)}/s</span>`;
+        html += `</div>`;
+      }
+      html += `<div style="display:flex;justify-content:space-between;border-top:1px solid #2a2418;margin-top:4px;padding-top:4px;">`;
+      html += `<span style="color:#8a8a6a;">Total</span>`;
+      html += `<span style="color:#5a9a4a;font-weight:bold;">+${fmt(eco.income_per_sec)}/s</span>`;
+      html += `</div>`;
+    }
+
+    // Expenditure section
+    html += `<div style="color:#cc6644;font-weight:bold;margin-top:8px;margin-bottom:4px;">AGENT WAGES</div>`;
+    if (expMap.size === 0) {
+      html += `<div style="color:#5a5a4a;font-style:italic;">No agents employed</div>`;
+    } else {
+      for (const [name, { total, count }] of expMap) {
+        const label = count > 1 ? `${name} x${count}` : name;
+        html += `<div style="display:flex;justify-content:space-between;">`;
+        html += `<span style="color:#9a9a7a;">${label}</span>`;
+        html += `<span style="color:#cc4444;">-${fmt(total)}/s</span>`;
+        html += `</div>`;
+      }
+      html += `<div style="display:flex;justify-content:space-between;border-top:1px solid #2a2418;margin-top:4px;padding-top:4px;">`;
+      html += `<span style="color:#8a8a6a;">Total</span>`;
+      html += `<span style="color:#cc4444;font-weight:bold;">-${fmt(eco.expenditure_per_sec)}/s</span>`;
+      html += `</div>`;
+    }
+
+    // Net
+    const net = eco.income_per_sec - eco.expenditure_per_sec;
+    const netSign = net >= 0 ? '+' : '';
+    const netColor = net >= 0 ? '#5a9a4a' : '#cc4444';
+    html += `<div style="display:flex;justify-content:space-between;border-top:1px solid #d4a017;margin-top:8px;padding-top:6px;">`;
+    html += `<span style="color:#d4a017;font-weight:bold;">NET</span>`;
+    html += `<span style="color:${netColor};font-weight:bold;">${netSign}${fmt(net)}/s</span>`;
+    html += `</div>`;
+
+    this.tooltipEl.innerHTML = html;
+    this.tooltipEl.style.display = 'block';
+    this.tooltipEl.style.left = `${x}px`;
+    this.tooltipEl.style.top = `${y}px`;
+    this.tooltipVisible = true;
+  }
+
+  private hideTooltip(): void {
+    this.tooltipEl.style.display = 'none';
+    this.tooltipVisible = false;
+  }
+
   // ── Public API ───────────────────────────────────────────────────
 
   update(player: PlayerSnapshot, economy: EconomySnapshot): void {
+    this.lastEconomy = economy;
     // ── Token pulse on change ─────────────────────────────────────
     if (economy.balance !== this.prevTokens && this.prevTokens !== -1) {
       this.tokenPulseTimer = 12;
@@ -290,10 +414,14 @@ export class HUD {
     this.tokenValueText.text = economy.balance.toLocaleString();
 
     // ── Income / net ──────────────────────────────────────────────
-    this.incomeText.text = `+${economy.income_per_sec}/s`;
-    const net = Math.round(economy.income_per_sec - economy.expenditure_per_sec);
+    const incomeFmt = economy.income_per_sec % 1 === 0
+      ? economy.income_per_sec.toString()
+      : economy.income_per_sec.toFixed(1);
+    this.incomeText.text = `+${incomeFmt}/s`;
+    const net = economy.income_per_sec - economy.expenditure_per_sec;
     const sign = net >= 0 ? '+' : '';
-    this.netText.text = `net ${sign}${net}/s`;
+    const netFmt = net % 1 === 0 ? net.toString() : net.toFixed(1);
+    this.netText.text = `net ${sign}${netFmt}/s`;
     this.netText.style = net >= 0 ? netPositiveStyle : netNegativeStyle;
 
     // ── Health bar fill ───────────────────────────────────────────

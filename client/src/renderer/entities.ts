@@ -11,6 +11,8 @@ interface EntitySprite {
   starsLabel: Text;
   /** Sprite used for rogue skull icons (loaded async). */
   iconSprite: Sprite | null;
+  /** Sprite used for building artwork. */
+  buildingSprite: Sprite | null;
   /** Health bar graphics for rogues. */
   healthBarBg: Graphics | null;
   healthBarFill: Graphics | null;
@@ -42,6 +44,23 @@ const ROGUE_TYPE_COLORS: Record<RogueTypeKind, number> = {
 
 const ITEM_COLOR = 0xffdd44;
 const BUILDING_COLOR = 0xd4a017;
+
+// ── Building sprite file mapping ──────────────────────────────────
+
+const SERVER_SPRITES = [
+  '/buildings/server_1.png',
+  '/buildings/server_2.png',
+  '/buildings/server_3.png',
+  '/buildings/server_4.png',
+  '/buildings/server_5.png',
+];
+
+const BUILDING_SPRITE_MAP: Record<string, string> = {
+  TokenWheel: '/buildings/wheel_contraption.png',
+  CraftingTable: '/buildings/workbench_1.png',
+  Pylon: '/buildings/pylon.png',
+  ComputeFarm: '/buildings/compute_farm.png',
+};
 
 // ── Agent tier icon mapping ────────────────────────────────────────
 
@@ -131,6 +150,8 @@ export class EntityRenderer {
 
   // Building grades for star display
   private buildingGrades: Record<string, BuildingGradeState> = {};
+  // Wheel tier for TokenWheel star display
+  private wheelTierStars = 1;
 
   // Cached skull textures (loaded once)
   private skullTextures: Map<number, Texture> = new Map();
@@ -140,16 +161,27 @@ export class EntityRenderer {
   private agentTextures: Map<AgentTierKind, Texture> = new Map();
   private agentIconsLoaded = false;
 
+  // Cached building textures (loaded once)
+  private buildingTextures: Map<string, Texture> = new Map();
+  private buildingsLoaded = false;
+
   constructor() {
     this.container = new Container();
     this.container.label = 'entities';
     this.loadSkullIcons();
     this.loadAgentIcons();
+    this.loadBuildingSprites();
   }
 
   /** Update the building grades map (called each tick from main). */
   setBuildingGrades(grades: Record<string, BuildingGradeState>): void {
     this.buildingGrades = grades;
+  }
+
+  /** Update the wheel tier for TokenWheel star display. */
+  setWheelTier(tier: string): void {
+    const map: Record<string, number> = { HandCrank: 1, GearAssembly: 2, WaterWheel: 3, RunicEngine: 4 };
+    this.wheelTierStars = map[tier] ?? 1;
   }
 
   // ── Load skull icon textures ──────────────────────────────────────
@@ -191,6 +223,33 @@ export class EntityRenderer {
     }
   }
 
+  private async loadBuildingSprites(): Promise<void> {
+    try {
+      const allPaths = [
+        ...SERVER_SPRITES,
+        ...Object.values(BUILDING_SPRITE_MAP),
+      ];
+      const textures = await Promise.all(
+        allPaths.map(p => Assets.load<Texture>(p)),
+      );
+      for (let i = 0; i < allPaths.length; i++) {
+        textures[i].source.scaleMode = 'nearest';
+        this.buildingTextures.set(allPaths[i], textures[i]);
+      }
+      this.buildingsLoaded = true;
+    } catch (err) {
+      console.warn('[entities] Failed to load building sprites:', err);
+    }
+  }
+
+  /** Pick a building texture path for a given entity ID + building type. */
+  private getBuildingTexturePath(entityId: number, buildingType: string): string {
+    const mapped = BUILDING_SPRITE_MAP[buildingType];
+    if (mapped) return mapped;
+    // Deterministic random server sprite based on entity ID
+    return SERVER_SPRITES[entityId % SERVER_SPRITES.length];
+  }
+
   /**
    * Update visible entities.
    */
@@ -225,7 +284,7 @@ export class EntityRenderer {
       if ('Agent' in delta.data) {
         this.drawAgent(sprite, delta.data.Agent);
       } else if ('Building' in delta.data) {
-        this.drawBuilding(sprite, delta.data.Building);
+        this.drawBuilding(sprite, delta.data.Building, delta.id);
       } else if ('Rogue' in delta.data) {
         this.drawRogue(sprite, delta.data.Rogue);
       } else if ('Item' in delta.data) {
@@ -270,7 +329,7 @@ export class EntityRenderer {
     container.addChild(label);
     container.addChild(starsLabel);
 
-    return { container, graphic, label, starsLabel, iconSprite: null, healthBarBg: null, healthBarFill: null };
+    return { container, graphic, label, starsLabel, iconSprite: null, buildingSprite: null, healthBarBg: null, healthBarFill: null };
   }
 
   private drawAgent(
@@ -328,46 +387,86 @@ export class EntityRenderer {
     }
 
     sprite.label.text = agent.name;
+    sprite.label.y = 10;
     sprite.label.style = makeLabelStyle(color);
     sprite.starsLabel.visible = false;
 
-    // Clean up rogue-specific elements (health bars)
+    // Clean up rogue/building-specific elements
     if (sprite.healthBarBg) sprite.healthBarBg.clear();
     if (sprite.healthBarFill) sprite.healthBarFill.clear();
+    this.cleanBuildingElements(sprite);
   }
 
   private drawBuilding(
     sprite: EntitySprite,
     building: { building_type: string; construction_pct: number },
+    entityId: number,
   ): void {
-    const size = 12;
     const isComplete = building.construction_pct >= 1.0;
+    const BUILDING_SPRITE_SIZE = 32;
 
-    drawSquare(
-      sprite.graphic,
-      BUILDING_COLOR,
-      size,
-      !isComplete,
-      isComplete ? 1.0 : building.construction_pct,
-    );
+    if (this.buildingsLoaded) {
+      const texPath = this.getBuildingTexturePath(entityId, building.building_type);
+      const tex = this.buildingTextures.get(texPath);
+      if (tex) {
+        if (!sprite.buildingSprite) {
+          sprite.buildingSprite = new Sprite(tex);
+          sprite.buildingSprite.width = BUILDING_SPRITE_SIZE;
+          sprite.buildingSprite.height = BUILDING_SPRITE_SIZE;
+          sprite.buildingSprite.anchor.set(0.5, 0.5);
+          sprite.container.addChild(sprite.buildingSprite);
+        } else {
+          sprite.buildingSprite.texture = tex;
+          sprite.buildingSprite.visible = true;
+          sprite.buildingSprite.width = BUILDING_SPRITE_SIZE;
+          sprite.buildingSprite.height = BUILDING_SPRITE_SIZE;
+        }
 
+        if (isComplete) {
+          sprite.buildingSprite.alpha = 1.0;
+        } else {
+          // Semi-transparent while under construction
+          sprite.buildingSprite.alpha = 0.3 + 0.7 * building.construction_pct;
+        }
+      }
+    } else {
+      // Fallback: gold box while sprites load
+      const size = 12;
+      drawSquare(sprite.graphic, BUILDING_COLOR, size, !isComplete, isComplete ? 1.0 : building.construction_pct);
+    }
+
+    // Adjust label position for larger sprite
     sprite.label.text = building.building_type;
     sprite.label.style = makeLabelStyle(BUILDING_COLOR);
+    sprite.label.y = BUILDING_SPRITE_SIZE / 2 + 2;
 
-    // Show star rating below name if graded
-    const buildingId = building.building_type
-      .replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
-    const grade = this.buildingGrades[buildingId];
-    if (grade && grade.stars > 0 && !grade.grading) {
+    // Show star rating below name — skip for infrastructure & crafting table
+    const noStarsTypes = ['Pylon', 'ComputeFarm', 'CraftingTable'];
+    if (noStarsTypes.includes(building.building_type)) {
+      sprite.starsLabel.visible = false;
+    } else if (building.building_type === 'TokenWheel') {
+      // TokenWheel uses wheel upgrade tier for stars (4 max)
       let stars = '';
-      for (let i = 1; i <= 6; i++) {
-        stars += i <= grade.stars ? '\u2605' : '\u2606';
+      for (let i = 1; i <= 4; i++) {
+        stars += i <= this.wheelTierStars ? '\u2605' : '\u2606';
       }
       sprite.starsLabel.text = stars;
       sprite.starsLabel.style = makeLabelStyle(0xd4a017);
+      sprite.starsLabel.y = BUILDING_SPRITE_SIZE / 2 + 9;
       sprite.starsLabel.visible = true;
     } else {
-      sprite.starsLabel.visible = false;
+      const buildingId = building.building_type
+        .replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+      const grade = this.buildingGrades[buildingId];
+      const starCount = (grade && !grade.grading) ? grade.stars : 0;
+      let stars = '';
+      for (let i = 1; i <= 6; i++) {
+        stars += i <= starCount ? '\u2605' : '\u2606';
+      }
+      sprite.starsLabel.text = stars;
+      sprite.starsLabel.style = makeLabelStyle(0xd4a017);
+      sprite.starsLabel.y = BUILDING_SPRITE_SIZE / 2 + 9;
+      sprite.starsLabel.visible = true;
     }
 
     this.cleanRogueElements(sprite);
@@ -442,8 +541,10 @@ export class EntityRenderer {
     // ── Label with level indicator ────────────────────────────────
     const levelStars = '★'.repeat(level);
     sprite.label.text = `${levelStars} ${rogue.rogue_type}`;
+    sprite.label.y = 10;
     sprite.label.style = makeLabelStyle(color);
     sprite.starsLabel.visible = false;
+    this.cleanBuildingElements(sprite);
   }
 
   private drawItem(
@@ -453,9 +554,11 @@ export class EntityRenderer {
     drawStar(sprite.graphic, ITEM_COLOR, 6);
 
     sprite.label.text = item.item_type;
+    sprite.label.y = 10;
     sprite.label.style = makeLabelStyle(ITEM_COLOR);
 
     this.cleanRogueElements(sprite);
+    this.cleanBuildingElements(sprite);
   }
 
   private drawProjectile(
@@ -471,9 +574,10 @@ export class EntityRenderer {
     sprite.graphic.fill({ color: 0xaaeeff, alpha: 1.0 });
     sprite.label.text = '';
     this.cleanRogueElements(sprite);
+    this.cleanBuildingElements(sprite);
   }
 
-  /** Remove rogue-specific elements when entity changes type. */
+  /** Remove rogue/building-specific elements when entity changes type. */
   private cleanRogueElements(sprite: EntitySprite): void {
     if (sprite.iconSprite) {
       sprite.iconSprite.visible = false;
@@ -485,5 +589,12 @@ export class EntityRenderer {
       sprite.healthBarFill.clear();
     }
     // starsLabel is managed by drawBuilding — hide for non-buildings handled there
+  }
+
+  /** Hide building sprite when entity is not a building. */
+  private cleanBuildingElements(sprite: EntitySprite): void {
+    if (sprite.buildingSprite) {
+      sprite.buildingSprite.visible = false;
+    }
   }
 }

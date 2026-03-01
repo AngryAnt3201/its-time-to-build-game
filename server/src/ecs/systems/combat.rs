@@ -42,7 +42,7 @@ fn rogue_damage_to_player(kind: RogueTypeKind) -> i32 {
         RogueTypeKind::Swarm => 1,
         RogueTypeKind::Corruptor => 1,
         RogueTypeKind::Looper => 1,
-        RogueTypeKind::Assassin => 2,
+        RogueTypeKind::Assassin => 3,
         RogueTypeKind::Mimic => 1,
         RogueTypeKind::TokenDrain => 0,
         RogueTypeKind::Architect => 1,
@@ -51,7 +51,7 @@ fn rogue_damage_to_player(kind: RogueTypeKind) -> i32 {
 
 fn rogue_damage_to_agent(kind: RogueTypeKind) -> i32 {
     match kind {
-        RogueTypeKind::Assassin => 4,
+        RogueTypeKind::Assassin => 5,
         RogueTypeKind::Corruptor => 1,
         _ => 1,
     }

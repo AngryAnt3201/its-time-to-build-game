@@ -108,8 +108,8 @@ const ALL_OBJECTS = [...OBJECTS_SMALL, ...OBJECTS_MEDIUM, ...OBJECTS_LARGE];
 
 // ── Hash & noise ────────────────────────────────────────────────────
 export function hash(x: number, y: number, seed = 0): number {
-  let h = (x * 374761393 + y * 668265263 + seed) | 0;
-  h = ((h ^ (h >> 13)) * 1274126177) | 0;
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + seed) | 0;
+  h = Math.imul(h ^ (h >> 13), 1274126177);
   return (h ^ (h >> 16)) >>> 0;
 }
 
@@ -206,6 +206,22 @@ function tintWithBrightness(baseTint: number, brightness: number): number {
   return (r << 16) | (g << 8) | b;
 }
 
+// ── Chest spritesheet layout ────────────────────────────────────────
+const CHEST_TYPES = 9;       // 9 chest variants across the sheet
+const CHEST_FRAMES = 4;      // 4 animation frames (closed → open)
+const CHEST_CELL = 32;       // each cell in the grid is 32×32 (with padding around the 18×16 content)
+const CHEST_ANIM_INTERVAL = 100; // ms between animation frames
+
+interface ChestAnimation {
+  sprite: Sprite;
+  glowGfx: Graphics;
+  chestType: number;
+  frame: number;
+  wx: number;
+  wy: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
 // ── Chunk data ──────────────────────────────────────────────────────
 interface ChunkData {
   container: Container;
@@ -224,6 +240,10 @@ export class WorldRenderer {
   private waterTiles: Map<number, Texture> = new Map();
   private detailTiles: Map<number, Texture> = new Map();
   private objectTextures: Map<string, Texture> = new Map();
+  /** Chest textures: [chestType][frame] */
+  private chestTextures: Texture[][] = [];
+  /** Active chest opening animations */
+  private chestAnimations: Map<string, ChestAnimation> = new Map();
   private loaded = false;
   private viewDistance = 3;
   private _debugBoundaries = false;
@@ -278,7 +298,30 @@ export class WorldRenderer {
       tex.source.scaleMode = 'nearest';
       this.objectTextures.set(obj.path, tex);
     });
-    await Promise.all(objectPromises);
+
+    // Load chest sprite sheet (9 types × 4 frames on a 32×32 grid)
+    const chestSheetPromise = Assets.load<Texture>('/chests/RPG Chests.png').then((chestTex) => {
+      chestTex.source.scaleMode = 'nearest';
+      this.chestTextures = [];
+      for (let t = 0; t < CHEST_TYPES; t++) {
+        const frames: Texture[] = [];
+        for (let f = 0; f < CHEST_FRAMES; f++) {
+          frames.push(new Texture({
+            source: chestTex.source,
+            frame: new Rectangle(
+              t * CHEST_CELL,
+              f * CHEST_CELL,
+              CHEST_CELL,
+              CHEST_CELL,
+            ),
+          }));
+        }
+        this.chestTextures.push(frames);
+      }
+      console.log(`[world] Loaded ${CHEST_TYPES} chest types × ${CHEST_FRAMES} frames`);
+    });
+
+    await Promise.all([...objectPromises, chestSheetPromise]);
 
     this.loaded = true;
     console.log(
@@ -533,6 +576,16 @@ export class WorldRenderer {
 
   // ── Chest placement ──────────────────────────────────────────────
 
+  /** Get the deterministic chest type index for a given world position. */
+  getChestType(wx: number, wy: number): number {
+    return hash(wx, wy, 55556) % CHEST_TYPES;
+  }
+
+  /** Get the closed-frame texture for a given chest type. */
+  getChestClosedTexture(chestType: number): Texture | null {
+    return this.chestTextures[chestType]?.[0] ?? null;
+  }
+
   private placeChests(layer: Container, cx: number, cy: number): void {
     const CHEST_SEED = 55555;
     const STEP = 8; // check every 8 tiles → 16 candidates per chunk
@@ -544,14 +597,16 @@ export class WorldRenderer {
 
         if (!isWalkable(wx, wy)) continue;
 
-        // ~10% chance per candidate = ~1-2 chests per chunk
+        // ~5% chance per candidate = ~0-1 chests per chunk
         const roll = hash(wx, wy, CHEST_SEED) % 100;
-        if (roll >= 10) continue;
+        if (roll >= 5) continue;
 
         // Skip already-opened chests
         if (this._openedChests.has(`${wx},${wy}`)) continue;
 
-        const tex = this.objectTextures.get('crystal2.png');
+        // Pick chest type deterministically
+        const chestType = this.getChestType(wx, wy);
+        const tex = this.chestTextures[chestType]?.[0]; // frame 0 = closed
         if (!tex) continue;
 
         // Glow circle behind the chest
@@ -571,15 +626,13 @@ export class WorldRenderer {
         const offsetX = ((hash(wx, wy, CHEST_SEED + 200) % 9) - 4);
         const offsetY = ((hash(wx, wy, CHEST_SEED + 300) % 9) - 4);
 
-        spr.width = 36;
-        spr.height = 36;
-        spr.x = tx * TILE_PX + offsetX - 18 + TILE_PX / 2;
-        spr.y = ty * TILE_PX + offsetY - 18 + TILE_PX / 2;
+        // Display at native 32×32 cell size (content is 18×16 centered with padding)
+        spr.width = CHEST_CELL;
+        spr.height = CHEST_CELL;
+        spr.x = tx * TILE_PX + offsetX - CHEST_CELL / 2 + TILE_PX / 2;
+        spr.y = ty * TILE_PX + offsetY - CHEST_CELL / 2 + TILE_PX / 2;
 
-        // Bright golden tint — no distance fog so chests are always visible
-        spr.tint = 0xd4a017;
         spr.alpha = 1.0;
-
         spr.label = `chest_${wx}_${wy}`;
 
         layer.addChild(spr);
@@ -587,9 +640,14 @@ export class WorldRenderer {
     }
   }
 
-  /** Remove an opened chest sprite and its glow from the rendered world. */
+  /** Play chest open animation then remove the sprite and glow. */
   removeChest(wx: number, wy: number): void {
     this._openedChests.add(`${wx},${wy}`);
+
+    const key = `${wx},${wy}`;
+
+    // Don't start duplicate animations
+    if (this.chestAnimations.has(key)) return;
 
     // Find which chunk this chest belongs to
     const cx = Math.floor(wx / CHUNK_SIZE);
@@ -599,16 +657,72 @@ export class WorldRenderer {
 
     const spriteLabel = `chest_${wx}_${wy}`;
     const glowLabel = `chest_glow_${wx}_${wy}`;
-    const toRemove: Container[] = [];
+
+    let chestSprite: Sprite | null = null;
+    let glowGfx: Graphics | null = null;
+
     for (const child of chunk.objectLayer.children) {
-      if (child.label === spriteLabel || child.label === glowLabel) {
-        toRemove.push(child as Container);
+      if (child.label === spriteLabel && child instanceof Sprite) {
+        chestSprite = child;
+      } else if (child.label === glowLabel && child instanceof Graphics) {
+        glowGfx = child;
       }
     }
-    for (const child of toRemove) {
-      chunk.objectLayer.removeChild(child);
-      child.destroy();
+
+    if (!chestSprite) {
+      // Sprite already gone (chunk was rebuilt), nothing to animate
+      return;
     }
+
+    const chestType = this.getChestType(wx, wy);
+    const anim: ChestAnimation = {
+      sprite: chestSprite,
+      glowGfx: glowGfx!,
+      chestType,
+      frame: 0,
+      wx,
+      wy,
+      timer: null,
+    };
+
+    this.chestAnimations.set(key, anim);
+    this.advanceChestAnimation(key);
+  }
+
+  private advanceChestAnimation(key: string): void {
+    const anim = this.chestAnimations.get(key);
+    if (!anim) return;
+
+    anim.frame++;
+
+    if (anim.frame >= CHEST_FRAMES) {
+      // Animation complete — remove sprite and glow
+      if (anim.timer) clearTimeout(anim.timer);
+      // Brief pause on the fully-open frame before removing
+      anim.timer = setTimeout(() => {
+        if (anim.sprite.parent) {
+          anim.sprite.parent.removeChild(anim.sprite);
+          anim.sprite.destroy();
+        }
+        if (anim.glowGfx?.parent) {
+          anim.glowGfx.parent.removeChild(anim.glowGfx);
+          anim.glowGfx.destroy();
+        }
+        this.chestAnimations.delete(key);
+      }, 200);
+      return;
+    }
+
+    // Set next frame texture
+    const tex = this.chestTextures[anim.chestType]?.[anim.frame];
+    if (tex) {
+      anim.sprite.texture = tex;
+    }
+
+    // Schedule next frame
+    anim.timer = setTimeout(() => {
+      this.advanceChestAnimation(key);
+    }, CHEST_ANIM_INTERVAL);
   }
 
   // ── Server-driven API (preserved) ─────────────────────────────────

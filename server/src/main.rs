@@ -237,6 +237,21 @@ async fn main() {
                             }
                         }
                     }
+                    PlayerAction::ReviveAgent { entity_id } => {
+                        let target = hecs::Entity::from_bits(*entity_id);
+                        if let Some(target) = target {
+                            match agents::revive_agent(&mut world, target, &mut game_state.economy) {
+                                Ok(()) => {
+                                    if let Ok(name) = world.get::<&AgentName>(target) {
+                                        debug_log_entries.push(format!("{} revived!", name.name));
+                                    }
+                                }
+                                Err(e) => {
+                                    debug_log_entries.push(format!("Revival failed: {}", e));
+                                }
+                            }
+                        }
+                    }
                     PlayerAction::UpgradeWheel => {
                         let (next_tier, cost) = match game_state.crank.tier {
                             CrankTier::HandCrank => (Some(CrankTier::GearAssembly), 25),
@@ -598,7 +613,7 @@ async fn main() {
                             const CHEST_SEED: i32 = 55555;
                             const STEP: i32 = 8;
                             *wx % STEP == 0 && *wy % STEP == 0
-                                && (collision::chest_hash(*wx, *wy, CHEST_SEED) % 100) < 10
+                                && (collision::chest_hash(*wx, *wy, CHEST_SEED) % 100) < 5
                         };
 
                         if is_valid_chest && !game_state.opened_chests.contains(&(*wx, *wy)) {
@@ -1134,6 +1149,12 @@ async fn main() {
                 balance: game_state.economy.balance,
                 income_per_sec: game_state.economy.income_per_tick * TICK_RATE_HZ as f64,
                 expenditure_per_sec: game_state.economy.expenditure_per_tick * TICK_RATE_HZ as f64,
+                income_sources: game_state.economy.income_sources.iter()
+                    .map(|(name, val)| (name.clone(), val * TICK_RATE_HZ as f64))
+                    .collect(),
+                expenditure_sinks: game_state.economy.expenditure_sinks.iter()
+                    .map(|(name, val)| (name.clone(), val * TICK_RATE_HZ as f64))
+                    .collect(),
             },
             log_entries,
             audio_triggers,

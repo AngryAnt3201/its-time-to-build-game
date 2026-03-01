@@ -95,10 +95,13 @@ pub fn economy_system(world: &World, game_state: &mut GameState, grading_service
     game_state.economy.income_sources = income_sources;
     game_state.economy.expenditure_sinks = wage_sinks;
 
-    // Apply net change to balance.
+    // Apply net change to balance using fractional accumulator so sub-token
+    // amounts aren't silently truncated to zero each tick.
     let net = total_income - total_wages;
-    // Convert fractional net to integer balance change. For small values this
-    // will often round to zero, letting fractional accumulation happen over
-    // multiple ticks.
-    game_state.economy.balance += net as i64;
+    game_state.economy.fractional += net;
+    let whole = game_state.economy.fractional as i64;
+    if whole != 0 {
+        game_state.economy.balance += whole;
+        game_state.economy.fractional -= whole as f64;
+    }
 }

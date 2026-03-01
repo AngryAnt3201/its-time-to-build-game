@@ -111,6 +111,20 @@ const TIER_COLORS: Record<AgentTierKind, number> = {
   Architect: 0xd4a017,
 };
 
+const REVIVAL_COSTS: Record<AgentTierKind, number> = {
+  Apprentice: 15,
+  Journeyman: 45,
+  Artisan: 120,
+  Architect: 300,
+};
+
+const RECRUIT_COSTS: Record<AgentTierKind, number> = {
+  Apprentice: 20,
+  Journeyman: 60,
+  Artisan: 150,
+  Architect: 400,
+};
+
 // ── Layout ──────────────────────────────────────────────────────────
 
 const PANEL_WIDTH = 180;
@@ -198,6 +212,7 @@ export class AgentsHUD {
   private tooltipMoraleBar: Graphics;
   private tooltipTurns: Text;
   private tooltipXP: Text;
+  private tooltipCost: Text;
   private hoveredAgent: AgentEntry | null = null;
   private tooltipIcon: Sprite | null = null;
   private tooltipIconBorder: Graphics;
@@ -311,6 +326,11 @@ export class AgentsHUD {
     this.tooltipXP.x = 10;
     this.tooltipXP.y = 140;
     this.tooltipContainer.addChild(this.tooltipXP);
+
+    this.tooltipCost = new Text({ text: '', style: new TextStyle({ fontFamily: FONT, fontSize: 9, fill: 0x44cc66 }) });
+    this.tooltipCost.x = 10;
+    this.tooltipCost.y = 156;
+    this.tooltipContainer.addChild(this.tooltipCost);
 
     // Tooltip profile icon border + sprite (added behind text)
     this.tooltipIconBorder = new Graphics();
@@ -644,8 +664,22 @@ export class AgentsHUD {
     // XP
     this.tooltipXP.text = 'XP: ' + agent.xp + '  Lv.' + agent.level;
 
+    // Cost info
+    const isDead = agent.state === 'Unresponsive';
+    if (isDead) {
+      const reviveCost = REVIVAL_COSTS[agent.tier] ?? 15;
+      this.tooltipCost.text = 'Revive: ' + reviveCost + ' tokens';
+      this.tooltipCost.style.fill = 0x44cc66;
+      this.tooltipCost.visible = true;
+    } else {
+      const recruitCost = RECRUIT_COSTS[agent.tier] ?? 20;
+      this.tooltipCost.text = 'Value: ' + recruitCost + ' tokens';
+      this.tooltipCost.style.fill = 0xd4a017;
+      this.tooltipCost.visible = true;
+    }
+
     // Resize tooltip background
-    const tooltipH = 158;
+    const tooltipH = 174;
     this.tooltipBg.clear();
     this.tooltipBg.roundRect(0, 0, TOOLTIP_W, tooltipH, 3);
     this.tooltipBg.fill({ color: 0x0d0b08, alpha: 0.94 });

@@ -178,6 +178,8 @@ export interface EconomySnapshot {
   balance: number;
   income_per_sec: number;
   expenditure_per_sec: number;
+  income_sources: [string, number][];
+  expenditure_sinks: [string, number][];
 }
 
 // ── Debug snapshot ─────────────────────────────────────────────────
@@ -289,6 +291,7 @@ export type PlayerAction =
   | "RollbackAgent"
   // Home base actions
   | { RecruitAgent: { entity_id: number } }
+  | { ReviveAgent: { entity_id: number } }
   | "UpgradeWheel"
   | { AssignAgentToWheel: { agent_id: number } }
   | "UnassignAgentFromWheel"

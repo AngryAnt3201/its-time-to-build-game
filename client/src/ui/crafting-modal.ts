@@ -172,26 +172,54 @@ export class CraftingModal {
   }
 
   updateInventory(items: InventoryItem[]): void {
-    this.inventory.clear();
+    // Build new inventory map and compare to current — only re-render if changed
+    const next = new Map<string, number>();
     for (const item of items) {
-      this.inventory.set(item.item_type, (this.inventory.get(item.item_type) ?? 0) + item.count);
+      next.set(item.item_type, (next.get(item.item_type) ?? 0) + item.count);
     }
-    if (this.visible) this.renderCards();
+    if (!this.mapsEqual(this.inventory, next)) {
+      this.inventory = next;
+      if (this.visible) this.renderCards();
+    }
   }
 
   updateTokens(balance: number): void {
-    this.tokens = balance;
-    if (this.visible) this.renderCards();
+    if (this.tokens !== balance) {
+      this.tokens = balance;
+      if (this.visible) this.renderCards();
+    }
   }
 
   updatePurchasedUpgrades(ids: string[]): void {
-    this.purchasedUpgrades = new Set(ids);
-    if (this.visible) this.renderCards();
+    const next = new Set(ids);
+    if (!this.setsEqual(this.purchasedUpgrades, next)) {
+      this.purchasedUpgrades = next;
+      if (this.visible) this.renderCards();
+    }
   }
 
   updateCraftedRecipes(ids: string[]): void {
-    this.craftedRecipes = new Set(ids);
-    if (this.visible) this.renderCards();
+    const next = new Set(ids);
+    if (!this.setsEqual(this.craftedRecipes, next)) {
+      this.craftedRecipes = next;
+      if (this.visible) this.renderCards();
+    }
+  }
+
+  private mapsEqual(a: Map<string, number>, b: Map<string, number>): boolean {
+    if (a.size !== b.size) return false;
+    for (const [k, v] of a) {
+      if (b.get(k) !== v) return false;
+    }
+    return true;
+  }
+
+  private setsEqual(a: Set<string>, b: Set<string>): boolean {
+    if (a.size !== b.size) return false;
+    for (const v of a) {
+      if (!b.has(v)) return false;
+    }
+    return true;
   }
 
   // ── Private helpers ─────────────────────────────────────────────
@@ -474,7 +502,7 @@ export class CraftingModal {
   }
 
   private handleCraft(recipe: CraftingRecipe): void {
-    // 1. Remove material ingredients
+    // 1. Remove material ingredients (send to server + update local state)
     for (const ing of recipe.ingredients) {
       this.callbacks.onAction({
         RemoveInventoryItem: {
@@ -482,14 +510,32 @@ export class CraftingModal {
           count: ing.count,
         },
       });
+
+      // Update local inventory immediately so UI responds
+      const matKey = materialItemType(ing.material);
+      const current = this.inventory.get(matKey) ?? 0;
+      const remaining = Math.max(0, current - ing.count);
+      if (remaining > 0) {
+        this.inventory.set(matKey, remaining);
+      } else {
+        this.inventory.delete(matKey);
+      }
     }
 
-    // 2. Blueprints are NOT consumed -- they stay in inventory
+    // 2. Deduct tokens locally for upgrades
+    if (recipe.tokenCost !== undefined) {
+      this.tokens = Math.max(0, this.tokens - recipe.tokenCost);
+    }
 
-    // 3. Send CraftItem
+    // 3. Blueprints are NOT consumed -- they stay in inventory
+
+    // 4. Send CraftItem
     this.callbacks.onAction({ CraftItem: { recipe_id: recipe.id } });
 
-    // 4-7. Category-specific result actions
+    // 5. Track as crafted locally
+    this.craftedRecipes.add(recipe.id);
+
+    // 6. Category-specific result actions
     switch (recipe.category) {
       case 'weapon':
         this.callbacks.onAction({ EquipWeapon: { weapon_id: recipe.result } });
@@ -499,6 +545,7 @@ export class CraftingModal {
         break;
       case 'upgrade':
         this.callbacks.onAction({ PurchaseUpgrade: { upgrade_id: recipe.result } });
+        this.purchasedUpgrades.add(recipe.result);
         break;
       case 'app':
         this.callbacks.onAction({
@@ -506,6 +553,9 @@ export class CraftingModal {
         });
         break;
     }
+
+    // 7. Re-render immediately so user sees the result
+    this.renderCards();
   }
 
   private makeTabButton(label: string, active: boolean): HTMLButtonElement {

@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { TitleScreen } from './ui/title-screen/TitleScreen';
 import { Application, Container, Graphics } from 'pixi.js';
+import { PlayerSprite } from './renderer/player-sprite';
 import { Connection } from './network/connection';
 import { EntityRenderer } from './renderer/entities';
 import { WorldRenderer, isWalkable, hash, TILE_PX } from './renderer/world';
@@ -106,7 +107,7 @@ function findNearestChest(
       const wx = baseTx + gx * STEP;
       const wy = baseTy + gy * STEP;
       if (!isWalkable(wx, wy)) continue;
-      if ((hash(wx, wy, CHEST_SEED) % 100) >= 10) continue;
+      if ((hash(wx, wy, CHEST_SEED) % 100) >= 5) continue;
       if (openedChests.has(`${wx},${wy}`)) continue;
       const chestPx = wx * TILE_PX + TILE_PX / 2;
       const chestPy = wy * TILE_PX + TILE_PX / 2;
@@ -274,12 +275,43 @@ async function startGame() {
     onOpenTerminal: (agentId, buildingId, agentName, buildingName) => {
       terminalOverlay.openPinned(agentId, buildingId, agentName, buildingName);
     },
+    onReviveAgent: (agentId) => {
+      const input: PlayerInput = {
+        tick: clientTick,
+        movement: { x: 0, y: 0 },
+        action: { ReviveAgent: { entity_id: agentId } },
+        target: null,
+      };
+      connection.sendInput(input);
+    },
   });
 
   // Forward chest open to connection (connection created later)
   let chestOpenForwarder: ((wx: number, wy: number) => void) | null = null;
+
+  // Pre-load chest sprite sheet as a plain HTML image for tooltip icons
+  const chestSheetImg = new Image();
+  chestSheetImg.src = '/chests/RPG Chests.png';
+  const chestIconCache = new Map<number, HTMLCanvasElement>();
+
   const chestWorldTooltip = new ChestWorldTooltip({
     onOpenChest: (wx, wy) => chestOpenForwarder?.(wx, wy),
+    getChestIcon: (wx, wy) => {
+      if (!chestSheetImg.complete) return null;
+      const chestType = worldRenderer.getChestType(wx, wy);
+      if (chestIconCache.has(chestType)) {
+        return chestIconCache.get(chestType)!.cloneNode(true) as HTMLCanvasElement;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      // Each chest cell is 32×32 on the sprite sheet, frame 0 is row 0
+      ctx.drawImage(chestSheetImg, chestType * 32, 0, 32, 32, 0, 0, 32, 32);
+      chestIconCache.set(chestType, canvas);
+      return canvas.cloneNode(true) as HTMLCanvasElement;
+    },
   });
 
   // Track which building the toolbar is currently showing for
@@ -308,12 +340,11 @@ async function startGame() {
   torchLight.circle(0, 0, 120);
   torchLight.fill({ color: 0xffdd88, alpha: 0.08 });
 
-  // ── Player graphic ──────────────────────────────────────────────
-  const player = new Graphics();
-  player.circle(0, 0, 8);
-  player.fill(0x6688cc);
+  // ── Player sprite (animated swordsman) ─────────────────────────
+  const player = new PlayerSprite();
   player.x = 400;
   player.y = 300;
+  await player.preload();
 
   // ── Combat VFX renderer ────────────────────────────────────────
   const combatVFX = new CombatVFX();
@@ -326,7 +357,7 @@ async function startGame() {
   worldContainer.addChild(worldRenderer.container);   // bottom: terrain
   worldContainer.addChild(lightingRenderer.container); // darkness overlay
   worldContainer.addChild(entityRenderer.container);   // entities
-  worldContainer.addChild(player);                     // player on top
+  worldContainer.addChild(player.container);             // player on top
   worldContainer.addChild(combatVFX.worldLayer);       // combat VFX on top
   worldContainer.addChild(torchLight);                 // torch glow
   worldContainer.addChild(buildMenu.ghostGraphic);     // placement ghost
@@ -661,11 +692,7 @@ async function startGame() {
     }
 
     if (nearestBuildingId !== null) {
-      // Home base buildings — skip the default building toolbar entirely
-      if (nearestBuildingType === 'TokenWheel' || nearestBuildingType === 'CraftingTable') {
-        // No hover tooltip for home base buildings — interact with E key
-        if (buildingToolbar.visible) buildingToolbar.scheduleHide();
-      } else {
+      {
         const bid = buildingTypeToId(nearestBuildingType);
         const name = buildingTypeToName(nearestBuildingType);
         const status = latestState?.project_manager?.building_statuses?.[bid] ?? 'NotInitialized';
@@ -678,10 +705,12 @@ async function startGame() {
           return { id: agentId, name: agentData?.name ?? '?', tier: agentData?.tier ?? 'Apprentice' };
         });
 
-        // Passive buildings — show description instead of agents/open app
+        // Passive / home-base buildings — show description instead of agents/open app
         const passiveDescriptions: Record<string, string> = {
-          Pylon: 'Enables observability into what agents are doing.',
+          Pylon: 'Illuminates surrounding area. Enables observability into what agents are doing.',
           ComputeFarm: 'Passively generates tokens over time.',
+          TokenWheel: 'Crank the wheel to generate tokens. Upgrade to increase output. Press E to open.',
+          CraftingTable: 'Combine materials found in chests to craft weapons and armor. Press E to open.',
         };
         const desc = passiveDescriptions[nearestBuildingType];
 
@@ -692,16 +721,31 @@ async function startGame() {
         buildingToolbar.cancelScheduledHide();
         toolbarBuildingEntityId = nearestBuildingId;
 
-        // Update star display on toolbar
-        const toolbarGrades = latestState?.project_manager?.building_grades;
-        if (toolbarGrades) {
-          const toolbarGrade = toolbarGrades[buildingToolbar.currentBuildingId];
+        // Update star + token gen display on toolbar
+        // Infrastructure (Pylon, ComputeFarm) and CraftingTable have no grades
+        const noStarsTypes = ['Pylon', 'ComputeFarm', 'CraftingTable'];
+        if (nearestBuildingType === 'TokenWheel') {
+          // Show stars based on wheel upgrade tier
+          const WHEEL_TIER_STARS: Record<string, number> = {
+            HandCrank: 1,
+            GearAssembly: 2,
+            WaterWheel: 3,
+            RunicEngine: 4,
+          };
+          const wheelTier = latestState?.wheel?.tier ?? 'HandCrank';
+          buildingToolbar.updateStars(WHEEL_TIER_STARS[wheelTier] ?? 1, 4);
+        } else if (noStarsTypes.includes(nearestBuildingType)) {
+          buildingToolbar.updateStars(null);
+        } else {
+          const toolbarGrades = latestState?.project_manager?.building_grades;
+          const toolbarGrade = toolbarGrades?.[buildingToolbar.currentBuildingId];
           buildingToolbar.updateStars(toolbarGrade?.stars ?? null);
         }
+        buildingToolbar.updateTokenGen(nearestBuildingType, null);
 
-        // Position BELOW the building in screen coords (building sprite is 12px, so offset by ~10 world px)
+        // Position BELOW the building in screen coords (building sprite is 32px, so offset by ~20 world px)
         const screenBx = nearestBx * ZOOM + worldContainer.x;
-        const screenBy = nearestBy * ZOOM + worldContainer.y + 10 * ZOOM;
+        const screenBy = nearestBy * ZOOM + worldContainer.y + 20 * ZOOM;
         buildingToolbar.updatePosition(screenBx, screenBy);
       }
     } else if (buildingToolbar.visible) {
@@ -711,7 +755,7 @@ async function startGame() {
     // ── Agent hover detection (for agent world tooltip) ────────────────
     if (!terminalOverlay.visible) {
       let nearestAgentId: number | null = null;
-      type AgentEntityData = { name: string; tier: string; state: string; health_pct: number; morale_pct: number; stars: number; turns_used: number; max_turns: number; model_lore_name: string; xp: number; level: number; bound?: boolean };
+      type AgentEntityData = { name: string; tier: string; state: string; health_pct: number; morale_pct: number; stars: number; turns_used: number; max_turns: number; model_lore_name: string; xp: number; level: number; bound?: boolean; recruitable_cost?: number | null };
       let nearestAgentDist = 32; // hover range in world pixels
       let nearestAgentData: AgentEntityData | null = null;
 
@@ -757,6 +801,7 @@ async function startGame() {
           xp: nearestAgentData.xp,
           level: nearestAgentData.level,
           bound: nearestAgentData.bound,
+          recruitable_cost: nearestAgentData.recruitable_cost,
         };
 
         const agentNoPylon = agentBuildingId ? !isBuildingNearPylon(agentBuildingId, entityMap) : false;
@@ -854,6 +899,15 @@ async function startGame() {
             connection.sendInput(input);
           }
         }
+      } else if (clickedAgentId !== null && clickedAgentData !== null && clickedAgentData.state === 'Unresponsive') {
+        // Revive dead agent on click
+        const input: PlayerInput = {
+          tick: clientTick,
+          movement: { x: 0, y: 0 },
+          action: { ReviveAgent: { entity_id: clickedAgentId } },
+          target: null,
+        };
+        connection.sendInput(input);
       }
 
       // ── Home base building click — open wheel/crafting panels ──
@@ -1220,6 +1274,29 @@ async function startGame() {
       player.x = pos.x;
       player.y = pos.y;
 
+      // ── Update player sprite direction & animation ─────────────
+      const facing = state.player.facing;
+      if (facing) {
+        player.setDirection(facing.x, facing.y);
+      }
+
+      if (state.player.dead) {
+        player.setAnim('death');
+      } else if (state.player_hit && state.player_hit_damage > 0) {
+        // Just got hit this frame – play hurt
+        player.setAnim('hurt');
+      } else if (action === 'Attack') {
+        player.setAnim('attack');
+      } else if (!player.isPlayingOneShot) {
+        // Only change to walk/idle once any one-shot anim finishes
+        if (movement.x !== 0 || movement.y !== 0) {
+          player.setAnim('walk');
+        } else {
+          player.setAnim('idle');
+        }
+      }
+      player.tick();
+
       // ── Process combat events for VFX ────────────────────────────
       if (state.combat_events && state.combat_events.length > 0) {
         for (const evt of state.combat_events) {
@@ -1288,6 +1365,9 @@ async function startGame() {
       // Update entity renderer with changed/removed entities
       if (state.project_manager?.building_grades) {
         entityRenderer.setBuildingGrades(state.project_manager.building_grades);
+      }
+      if (state.wheel) {
+        entityRenderer.setWheelTier(state.wheel.tier);
       }
       entityRenderer.update(state.entities_changed, state.entities_removed);
 

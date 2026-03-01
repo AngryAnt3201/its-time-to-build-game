@@ -150,6 +150,17 @@ export function TitleScreen({ onPlay }: TitleScreenProps) {
         </button>
 
         <p className="version-tag">v0.1.0 // ALPHA BUILD</p>
+        <p className="built-with-tag">
+          built with love with{' '}
+          <a
+            href="https://github.com/its-maestro-baby/maestro"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="maestro-link"
+          >
+            Maestro
+          </a>
+        </p>
       </div>
 
       <button

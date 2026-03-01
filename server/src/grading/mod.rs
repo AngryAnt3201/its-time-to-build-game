@@ -71,16 +71,22 @@ impl GradingService {
     pub fn get_multiplier(&self, building_id: &str) -> f64 {
         match self.grades.get(building_id) {
             None => 1.0,
-            Some(grade) => match grade.stars {
-                0 => 0.0,
-                1 => 0.5,
-                2 => 1.0,
-                3 => 2.0,
-                4 => 3.0,
-                5 => 5.0,
-                6 => 10.0,
-                _ => 1.0,
-            },
+            Some(grade) => {
+                // While grading for the first time (no previous result), keep default multiplier
+                if grade.grading && grade.stars == 0 {
+                    return 1.0;
+                }
+                match grade.stars {
+                    0 => 0.0,
+                    1 => 0.5,
+                    2 => 1.0,
+                    3 => 2.0,
+                    4 => 3.0,
+                    5 => 5.0,
+                    6 => 10.0,
+                    _ => 1.0,
+                }
+            }
         }
     }
 }

@@ -24,6 +24,72 @@ fn recruitment_cost(tier: AgentTierKind) -> i64 {
     }
 }
 
+/// Returns the revival cost in tokens for a given agent tier.
+pub fn revival_cost(tier: AgentTierKind) -> i64 {
+    match tier {
+        AgentTierKind::Apprentice => 15,
+        AgentTierKind::Journeyman => 45,
+        AgentTierKind::Artisan => 120,
+        AgentTierKind::Architect => 300,
+    }
+}
+
+/// Revive a dead (Unresponsive) agent, restoring them to Idle state with full health.
+///
+/// Checks that the agent is in the `Unresponsive` state and that the economy has
+/// sufficient balance for the tier's revival cost.
+///
+/// # Errors
+///
+/// Returns an error if the entity doesn't exist, isn't dead, or if funds are insufficient.
+pub fn revive_agent(
+    world: &mut World,
+    agent_entity: hecs::Entity,
+    economy: &mut TokenEconomy,
+) -> Result<(), String> {
+    let current_state = world
+        .get::<&AgentState>(agent_entity)
+        .map(|s| s.state)
+        .map_err(|_| "Entity does not have an AgentState component".to_string())?;
+
+    if current_state != AgentStateKind::Unresponsive {
+        return Err("Agent is not dead and cannot be revived".to_string());
+    }
+
+    let tier = world
+        .get::<&AgentTier>(agent_entity)
+        .map(|t| t.tier)
+        .map_err(|_| "Entity does not have an AgentTier component".to_string())?;
+
+    let cost = revival_cost(tier);
+
+    if economy.balance < cost {
+        return Err(format!(
+            "Insufficient balance: need {} tokens but only have {}",
+            cost, economy.balance
+        ));
+    }
+
+    economy.balance -= cost;
+
+    // Restore state to Idle
+    if let Ok(mut state) = world.get::<&mut AgentState>(agent_entity) {
+        state.state = AgentStateKind::Idle;
+    }
+
+    // Restore health to max
+    if let Ok(mut health) = world.get::<&mut Health>(agent_entity) {
+        health.current = health.max;
+    }
+
+    // Restore morale to 0.5 (revived agents are a bit shaken)
+    if let Ok(mut morale) = world.get::<&mut AgentMorale>(agent_entity) {
+        morale.value = 0.5;
+    }
+
+    Ok(())
+}
+
 /// Generate random agent stats based on tier.
 ///
 /// Each tier defines min/max ranges for reliability, speed, awareness, and resilience.

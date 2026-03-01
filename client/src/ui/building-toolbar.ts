@@ -18,6 +18,31 @@ export interface AssignedAgent {
 
 const MAX_SLOTS = 3;
 
+// ── Base income per tick (matches server economy.rs) × 20 ticks/sec ──
+const BASE_INCOME_PER_SEC: Record<string, number> = {
+  ComputeFarm: 0.5 * 20,
+  TodoApp: 0.02 * 20,
+  Calculator: 0,
+  LandingPage: 0,
+  WeatherDashboard: 0.1 * 20,
+  ChatApp: 0,
+  KanbanBoard: 0,
+  EcommerceStore: 0.3 * 20,
+  AiImageGenerator: 0.25 * 20,
+  ApiDashboard: 0,
+  Blockchain: 1.0 * 20,
+};
+
+const GRADE_MULTIPLIER: Record<number, number> = {
+  0: 1.0,
+  1: 0.5,
+  2: 1.0,
+  3: 2.0,
+  4: 3.0,
+  5: 5.0,
+  6: 10.0,
+};
+
 const TIER_ICONS: Record<string, string> = {
   Apprentice: 'agent_1.png',
   Journeyman: 'agent_2.png',
@@ -30,6 +55,7 @@ export class BuildingToolbar {
   private nameEl: HTMLSpanElement;
   private statusEl: HTMLSpanElement;
   private starsEl: HTMLSpanElement;
+  private tokenGenEl: HTMLDivElement;
   private descEl: HTMLDivElement;
   private noPylonEl: HTMLDivElement;
   private slotsEl: HTMLDivElement;
@@ -82,6 +108,10 @@ export class BuildingToolbar {
     header.appendChild(this.statusEl);
     header.appendChild(this.starsEl);
 
+    // Token generation line
+    this.tokenGenEl = document.createElement('div');
+    this.tokenGenEl.style.cssText = 'display: none; color: #8a7a5a; font-size: 10px; margin-bottom: 4px;';
+
     // Description line (for passive buildings)
     this.descEl = document.createElement('div');
     this.descEl.style.cssText = 'display: none; color: #8a7a5a; font-size: 10px; margin-bottom: 6px; line-height: 1.3;';
@@ -130,6 +160,7 @@ export class BuildingToolbar {
     });
 
     this.container.appendChild(header);
+    this.container.appendChild(this.tokenGenEl);
     this.container.appendChild(this.descEl);
     this.container.appendChild(this.noPylonEl);
     this.container.appendChild(this.slotsEl);
@@ -152,10 +183,10 @@ export class BuildingToolbar {
 
     this.currentBuildingId = buildingId;
     this.nameEl.textContent = name;
-    this.updateStatusBadge(status);
 
     if (opts?.description) {
-      // Passive building — show description, hide agents & open app
+      // Passive building — show description, hide agents/open app/status
+      this.statusEl.style.display = 'none';
       this.descEl.textContent = opts.description;
       this.descEl.style.display = 'block';
       this.noPylonEl.style.display = 'none';
@@ -164,6 +195,8 @@ export class BuildingToolbar {
       this.closePicker();
     } else {
       // Normal building — show agents & open app, hide description
+      this.updateStatusBadge(status);
+      this.statusEl.style.display = 'inline';
       this.descEl.style.display = 'none';
       this.noPylonEl.style.display = opts?.noPylon ? 'block' : 'none';
       this.updateSlots(assignedAgents);
@@ -288,14 +321,28 @@ export class BuildingToolbar {
     }
   }
 
-  updateStars(stars: number | null): void {
-    if (stars === null || stars === undefined) {
+  /** Update the token generation display for a building type + star grade. */
+  updateTokenGen(buildingType: string, stars: number | null): void {
+    const base = BASE_INCOME_PER_SEC[buildingType] ?? 0;
+    if (base <= 0) {
+      this.tokenGenEl.style.display = 'none';
+      return;
+    }
+    const mult = GRADE_MULTIPLIER[stars ?? 0] ?? 1.0;
+    const tps = base * mult;
+    const formatted = tps % 1 === 0 ? String(tps) : tps.toFixed(1);
+    this.tokenGenEl.textContent = `+${formatted} tokens/s`;
+    this.tokenGenEl.style.display = 'block';
+  }
+
+  updateStars(stars: number | null, maxStars = 6): void {
+    if (stars === null) {
       this.starsEl.style.display = 'none';
       return;
     }
     this.starsEl.style.display = 'inline';
     let text = '';
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= maxStars; i++) {
       text += i <= stars ? '\u2605' : '\u2606';
     }
     this.starsEl.textContent = text;

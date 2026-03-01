@@ -358,6 +358,34 @@
   letter-spacing: 0.12em;
 }
 
+/* ── Built-with tag ───────────────────────────────────── */
+
+.built-with-tag {
+  margin-top: 12px;
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  opacity: 0;
+  transform: translateY(18px);
+}
+
+.title-screen.loaded .built-with-tag {
+  animation: fadeInUp 0.7s ease forwards;
+  animation-delay: 1.3s;
+}
+
+.maestro-link {
+  color: var(--gold);
+  text-decoration: none;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+.maestro-link:hover {
+  color: var(--gold-bright);
+  text-shadow: 0 0 8px var(--gold-glow);
+}
+
 /* ── Settings gear ─────────────────────────────────────── */
 
 .settings-gear {

@@ -212,13 +212,13 @@ fn cascade_spawn(
 pub fn spawn_rogue(world: &mut World, x: f32, y: f32, rogue_kind: RogueTypeKind) {
     // ── HP and damage by type ─────────────────────────────────────────
     let (hp, _damage) = match rogue_kind {
-        RogueTypeKind::Swarm => (15, 3),
-        RogueTypeKind::Corruptor => (40, 5),
-        RogueTypeKind::Looper => (25, 2),
-        RogueTypeKind::TokenDrain => (20, 1),
-        RogueTypeKind::Assassin => (35, 15),
-        RogueTypeKind::Mimic => (30, 8),
-        RogueTypeKind::Architect => (80, 10),
+        RogueTypeKind::Swarm => (20, 4),
+        RogueTypeKind::Corruptor => (52, 7),
+        RogueTypeKind::Looper => (33, 3),
+        RogueTypeKind::TokenDrain => (26, 1),
+        RogueTypeKind::Assassin => (46, 20),
+        RogueTypeKind::Mimic => (39, 10),
+        RogueTypeKind::Architect => (104, 13),
     };
 
     // ── Visibility: TokenDrain starts invisible ───────────────────────

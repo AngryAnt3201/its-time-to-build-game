@@ -1,5 +1,6 @@
 export interface AgentWorldTooltipCallbacks {
   onOpenTerminal: (agentId: number, buildingId: string, agentName: string, buildingName: string) => void;
+  onReviveAgent?: (agentId: number) => void;
 }
 
 const TIER_ICONS: Record<string, string> = {
@@ -48,7 +49,22 @@ export interface AgentWorldData {
   xp: number;
   level: number;
   bound?: boolean;
+  recruitable_cost?: number | null;
 }
+
+const REVIVAL_COSTS: Record<string, number> = {
+  Apprentice: 15,
+  Journeyman: 45,
+  Artisan: 120,
+  Architect: 300,
+};
+
+const RECRUIT_COSTS: Record<string, number> = {
+  Apprentice: 20,
+  Journeyman: 60,
+  Artisan: 150,
+  Architect: 400,
+};
 
 export class AgentWorldTooltip {
   private container: HTMLDivElement;
@@ -211,6 +227,58 @@ export class AgentWorldTooltip {
     xpEl.textContent = `XP: ${agent.xp}  Lv.${agent.level}`;
     xpEl.style.cssText = 'color: #5a5a4a; font-size: 9px; margin-bottom: 8px;';
     this.container.appendChild(xpEl);
+
+    // Recruitment cost — show for bound/recruitable agents
+    if (agent.bound && agent.recruitable_cost != null) {
+      const costEl = document.createElement('div');
+      costEl.innerHTML = `Cost: <span style="color: #d4a017; font-weight: bold;">${agent.recruitable_cost} tokens</span>`;
+      costEl.style.cssText = 'color: #5a5a4a; font-size: 9px; margin-bottom: 6px; padding: 3px 4px; background: rgba(212, 160, 23, 0.06); border: 1px solid rgba(212, 160, 23, 0.15); border-radius: 2px;';
+      this.container.appendChild(costEl);
+    } else if (!agent.bound && agent.recruitable_cost != null) {
+      // Dormant recruitable agent (not bound)
+      const costEl = document.createElement('div');
+      costEl.innerHTML = `Recruit: <span style="color: #d4a017; font-weight: bold;">${agent.recruitable_cost} tokens</span>`;
+      costEl.style.cssText = 'color: #5a5a4a; font-size: 9px; margin-bottom: 6px; padding: 3px 4px; background: rgba(212, 160, 23, 0.06); border: 1px solid rgba(212, 160, 23, 0.15); border-radius: 2px;';
+      this.container.appendChild(costEl);
+    }
+
+    // Revival cost — show for dead agents
+    if (isDead) {
+      const revivalCost = REVIVAL_COSTS[agent.tier] ?? 20;
+      const revivalEl = document.createElement('div');
+      revivalEl.innerHTML = `Revive: <span style="color: #44cc66; font-weight: bold;">${revivalCost} tokens</span>`;
+      revivalEl.style.cssText = 'color: #5a5a4a; font-size: 9px; margin-bottom: 6px; padding: 3px 4px; background: rgba(68, 204, 102, 0.06); border: 1px solid rgba(68, 204, 102, 0.15); border-radius: 2px;';
+      this.container.appendChild(revivalEl);
+
+      // Revive button
+      if (this.callbacks.onReviveAgent) {
+        const btn = document.createElement('button');
+        btn.textContent = '\u2764 Revive Agent';
+        btn.style.cssText = `
+          width: 100%;
+          padding: 5px 0;
+          background: transparent;
+          border: 1px solid #44cc66;
+          border-radius: 3px;
+          color: #44cc66;
+          font-family: 'IBM Plex Mono', monospace;
+          font-size: 10px;
+          cursor: pointer;
+          margin-bottom: 4px;
+        `;
+        btn.addEventListener('mouseenter', () => {
+          btn.style.background = '#1a2e1a';
+        });
+        btn.addEventListener('mouseleave', () => {
+          btn.style.background = 'transparent';
+        });
+        btn.addEventListener('click', () => {
+          this.callbacks.onReviveAgent!(agent.id);
+          this.hide();
+        });
+        this.container.appendChild(btn);
+      }
+    }
 
     // No-pylon warning — show when assigned to a building without pylon coverage
     if (noPylon && buildingId) {

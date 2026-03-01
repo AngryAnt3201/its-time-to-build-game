@@ -10,13 +10,13 @@ use crate::protocol::RogueTypeKind;
 /// Returns the movement speed for a given rogue type.
 fn speed_for_type(kind: RogueTypeKind) -> f32 {
     match kind {
-        RogueTypeKind::Swarm => 0.75,
-        RogueTypeKind::Assassin => 1.5,
-        RogueTypeKind::Corruptor => 0.4,
-        RogueTypeKind::Looper => 0.5,
-        RogueTypeKind::TokenDrain => 0.25,
+        RogueTypeKind::Swarm => 0.98,
+        RogueTypeKind::Assassin => 1.95,
+        RogueTypeKind::Corruptor => 0.52,
+        RogueTypeKind::Looper => 0.65,
+        RogueTypeKind::TokenDrain => 0.33,
         RogueTypeKind::Mimic => 0.0, // stationary
-        RogueTypeKind::Architect => 0.3,
+        RogueTypeKind::Architect => 0.39,
     }
 }
 
