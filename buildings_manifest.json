@@ -1,8 +1,8 @@
 {
   "buildings": [
     { "id": "todo_app", "name": "Todo App", "tier": 1, "port": 3101, "directory_name": "todo-app", "description": "A task manager with CRUD, drag-and-drop reordering, and filters", "cost": 50, "build_time": 80, "unlocked_by_default": true },
-    { "id": "calculator", "name": "Calculator", "tier": 1, "port": 3102, "directory_name": "calculator", "description": "A scientific calculator with history tape and keyboard input", "cost": 60, "build_time": 90, "unlocked_by_default": true },
-    { "id": "landing_page", "name": "Landing Page", "tier": 1, "port": 3103, "directory_name": "landing-page", "description": "A single-page marketing site with hero, features, and CTA sections", "cost": 40, "build_time": 70, "unlocked_by_default": true },
+    { "id": "calculator", "name": "Calculator", "tier": 1, "port": 3102, "directory_name": "calculator", "description": "A scientific calculator with history tape and keyboard input", "cost": 60, "build_time": 90, "unlocked_by_default": false },
+    { "id": "landing_page", "name": "Landing Page", "tier": 1, "port": 3103, "directory_name": "landing-page", "description": "A single-page marketing site with hero, features, and CTA sections", "cost": 40, "build_time": 70, "unlocked_by_default": false },
 
     { "id": "weather_dashboard", "name": "Weather Dashboard", "tier": 2, "port": 3111, "directory_name": "weather-dashboard", "description": "A live weather dashboard with forecasts, maps, and location search", "cost": 120, "build_time": 250, "unlocked_by_default": false },
     { "id": "chat_app", "name": "Chat App", "tier": 2, "port": 3112, "directory_name": "chat-app", "description": "A real-time messaging app with rooms, typing indicators, and history", "cost": 150, "build_time": 300, "unlocked_by_default": false },
