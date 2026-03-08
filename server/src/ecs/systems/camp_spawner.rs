@@ -6,8 +6,8 @@ use crate::ecs::components::{
     BoundAgent, Collider, GameState, GuardianRogue, Health, Position, Recruitable, Rogue, RogueAI,
     RogueBehaviorState, RogueType, RogueVisibility, Velocity, VoiceProfile, WanderState,
 };
-use crate::game::agents::generate_vibe_config;
-use crate::protocol::{AgentStateKind, AgentTierKind, RogueTypeKind};
+use crate::game::agents::generate_config_for_backend;
+use crate::protocol::{AgentStateKind, AgentTierKind, AiBackend, RogueTypeKind};
 
 /// Grid spacing for bound-agent camp positions (world units).
 const CAMP_GRID_STEP: i32 = 384;
@@ -119,6 +119,7 @@ pub fn camp_spawner_system(
     game_state: &mut GameState,
     player_x: f32,
     player_y: f32,
+    backend: AiBackend,
 ) {
     let radius = CAMP_SPAWN_RADIUS;
     let step = CAMP_GRID_STEP as f32;
@@ -199,7 +200,7 @@ pub fn camp_spawner_system(
                 AgentTier { tier },
                 AgentName { name: agent_name },
                 VoiceProfile { voice_id: "bound_default".to_string() },
-                generate_vibe_config(tier),
+                generate_config_for_backend(backend, tier),
                 Recruitable { cost: recruit_cost(tier) },
                 WanderState {
                     home_x: world_x,

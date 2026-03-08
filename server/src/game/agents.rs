@@ -211,6 +211,14 @@ pub fn generate_claude_config(tier: AgentTierKind) -> AgentVibeConfig {
     }
 }
 
+/// Generate the agent config for the given backend and tier.
+pub fn generate_config_for_backend(backend: crate::protocol::AiBackend, tier: AgentTierKind) -> AgentVibeConfig {
+    match backend {
+        crate::protocol::AiBackend::MistralVibe => generate_vibe_config(tier),
+        crate::protocol::AiBackend::ClaudeCode => generate_claude_config(tier),
+    }
+}
+
 /// Pick a random name from the name bank.
 fn pick_name() -> String {
     let mut rng = rand::thread_rng();
@@ -233,6 +241,7 @@ pub fn recruit_agent(
     spawn_x: f32,
     spawn_y: f32,
     economy: &mut TokenEconomy,
+    backend: crate::protocol::AiBackend,
 ) -> Result<hecs::Entity, String> {
     let cost = recruitment_cost(tier);
 
@@ -281,7 +290,7 @@ pub fn recruit_agent(
         VoiceProfile {
             voice_id: "placeholder".to_string(),
         },
-        generate_vibe_config(tier),
+        generate_config_for_backend(backend, tier),
     ));
 
     Ok(entity)
@@ -353,7 +362,7 @@ mod tests {
     fn recruit_apprentice_deducts_cost() {
         let mut world = World::new();
         let mut economy = make_economy(100);
-        let result = recruit_agent(&mut world, AgentTierKind::Apprentice, 10.0, 20.0, &mut economy);
+        let result = recruit_agent(&mut world, AgentTierKind::Apprentice, 10.0, 20.0, &mut economy, crate::protocol::AiBackend::MistralVibe);
         assert!(result.is_ok());
         assert_eq!(economy.balance, 80); // 100 - 20
     }
@@ -362,7 +371,7 @@ mod tests {
     fn recruit_fails_with_insufficient_balance() {
         let mut world = World::new();
         let mut economy = make_economy(10);
-        let result = recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy);
+        let result = recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe);
         assert!(result.is_err());
         assert_eq!(economy.balance, 10); // unchanged
     }
@@ -371,7 +380,7 @@ mod tests {
     fn recruit_architect_costs_400() {
         let mut world = World::new();
         let mut economy = make_economy(500);
-        let result = recruit_agent(&mut world, AgentTierKind::Architect, 0.0, 0.0, &mut economy);
+        let result = recruit_agent(&mut world, AgentTierKind::Architect, 0.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe);
         assert!(result.is_ok());
         assert_eq!(economy.balance, 100); // 500 - 400
     }
@@ -381,7 +390,7 @@ mod tests {
         let mut world = World::new();
         let mut economy = make_economy(200);
         let entity =
-            recruit_agent(&mut world, AgentTierKind::Journeyman, 5.0, 15.0, &mut economy).unwrap();
+            recruit_agent(&mut world, AgentTierKind::Journeyman, 5.0, 15.0, &mut economy, crate::protocol::AiBackend::MistralVibe).unwrap();
 
         // Verify position
         let pos = world.get::<&Position>(entity).unwrap();
@@ -410,7 +419,7 @@ mod tests {
         let mut world = World::new();
         let mut economy = make_economy(100);
         let entity =
-            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy).unwrap();
+            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe).unwrap();
 
         let result = assign_task(&mut world, entity, TaskAssignment::Explore);
         assert!(result.is_ok());
@@ -427,7 +436,7 @@ mod tests {
         let mut world = World::new();
         let mut economy = make_economy(100);
         let entity =
-            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy).unwrap();
+            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe).unwrap();
 
         // Force unresponsive state
         if let Ok(mut state) = world.get::<&mut AgentState>(entity) {
@@ -443,7 +452,7 @@ mod tests {
         let mut world = World::new();
         let mut economy = make_economy(100);
         let entity =
-            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy).unwrap();
+            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe).unwrap();
 
         assign_task(&mut world, entity, TaskAssignment::Guard).unwrap();
 
@@ -456,7 +465,7 @@ mod tests {
         let mut world = World::new();
         let mut economy = make_economy(100);
         let entity =
-            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy).unwrap();
+            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe).unwrap();
 
         assign_task(&mut world, entity, TaskAssignment::Crank).unwrap();
 
@@ -469,7 +478,7 @@ mod tests {
         let mut world = World::new();
         let mut economy = make_economy(100);
         let entity =
-            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy).unwrap();
+            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe).unwrap();
 
         let vibe = world.get::<&AgentVibeConfig>(entity).unwrap();
         assert_eq!(vibe.max_turns, 5);
@@ -483,7 +492,7 @@ mod tests {
         let mut world = World::new();
         let mut economy = make_economy(500);
         let entity =
-            recruit_agent(&mut world, AgentTierKind::Architect, 0.0, 0.0, &mut economy).unwrap();
+            recruit_agent(&mut world, AgentTierKind::Architect, 0.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe).unwrap();
 
         let vibe = world.get::<&AgentVibeConfig>(entity).unwrap();
         assert_eq!(vibe.max_turns, 50);
@@ -497,9 +506,9 @@ mod tests {
         let mut economy = make_economy(1000);
 
         let apprentice =
-            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy).unwrap();
+            recruit_agent(&mut world, AgentTierKind::Apprentice, 0.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe).unwrap();
         let architect =
-            recruit_agent(&mut world, AgentTierKind::Architect, 10.0, 0.0, &mut economy).unwrap();
+            recruit_agent(&mut world, AgentTierKind::Architect, 10.0, 0.0, &mut economy, crate::protocol::AiBackend::MistralVibe).unwrap();
 
         let a_vibe = world.get::<&AgentVibeConfig>(apprentice).unwrap();
         let arch_vibe = world.get::<&AgentVibeConfig>(architect).unwrap();

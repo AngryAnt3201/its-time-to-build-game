@@ -353,7 +353,7 @@ async fn main() {
                             px = pos.x;
                             py = pos.y;
                         }
-                        match agents::recruit_agent(&mut world, *tier, px + 30.0, py + 30.0, &mut game_state.economy) {
+                        match agents::recruit_agent(&mut world, *tier, px + 30.0, py + 30.0, &mut game_state.economy, vibe_manager.backend()) {
                             Ok(_) => {
                                 debug_log_entries.push(format!("[debug] spawned {:?} agent", tier));
                             }
@@ -728,6 +728,7 @@ async fn main() {
             &mut game_state,
             player_x,
             player_y,
+            vibe_manager.backend(),
         );
 
         // ── 2. Rogue AI behavior ─────────────────────────────────────
