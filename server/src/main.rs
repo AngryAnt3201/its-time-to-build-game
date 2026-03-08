@@ -544,6 +544,14 @@ async fn main() {
                     }
                     PlayerAction::SetAiBackend { backend } => {
                         vibe_manager.set_backend(*backend);
+                        // Re-generate vibe configs for all existing agents
+                        for (_id, (vibe_config, tier)) in world.query_mut::<(&mut AgentVibeConfig, &AgentTier)>() {
+                            let new_config = agents::generate_config_for_backend(*backend, tier.tier);
+                            vibe_config.model_id = new_config.model_id;
+                            vibe_config.model_lore_name = new_config.model_lore_name;
+                            vibe_config.vibe_agent_name = new_config.vibe_agent_name;
+                            vibe_config.context_window = new_config.context_window;
+                        }
                         debug_log_entries.push(format!("[vibe] AI backend set to {:?}", backend));
                     }
                     PlayerAction::SetAnthropicApiKey { key } => {
