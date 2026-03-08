@@ -912,10 +912,10 @@
 }
 
 .backend-prompt {
-  font-family: var(--font-mono);
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
   letter-spacing: 0.18em;
-  color: var(--clr-gold);
+  color: var(--gold);
   opacity: 0.7;
   margin-bottom: 0.8rem;
   text-transform: uppercase;
@@ -936,23 +936,23 @@
   transition: all 0.2s ease;
   min-width: 160px;
   position: relative;
-  font-family: var(--font-mono);
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 .backend-card:hover {
-  border-color: var(--clr-gold);
+  border-color: var(--gold);
   background: rgba(20, 18, 10, 0.9);
   box-shadow: 0 0 20px rgba(200, 180, 100, 0.15);
 }
 
 .backend-card--selected {
-  border-color: var(--clr-green);
+  border-color: var(--green);
   background: rgba(10, 25, 10, 0.9);
   box-shadow: 0 0 25px rgba(80, 200, 80, 0.2), inset 0 0 30px rgba(80, 200, 80, 0.05);
 }
 
 .backend-card--selected:hover {
-  border-color: var(--clr-green);
+  border-color: var(--green);
 }
 
 .backend-card-name {
@@ -960,18 +960,18 @@
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.15em;
-  color: var(--clr-text);
+  color: var(--gold-bright);
   margin-bottom: 0.3rem;
 }
 
 .backend-card--selected .backend-card-name {
-  color: var(--clr-green);
+  color: var(--green);
 }
 
 .backend-card-desc {
   display: block;
   font-size: 0.6rem;
   letter-spacing: 0.12em;
-  color: var(--clr-gold);
+  color: var(--gold);
   opacity: 0.6;
 }
