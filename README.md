@@ -18,23 +18,25 @@
   <img src="https://img.shields.io/badge/client-TypeScript%20%2B%20React-blue" alt="Client"/>
   <img src="https://img.shields.io/badge/server-Rust%20%2B%20Tokio-orange" alt="Server"/>
   <img src="https://img.shields.io/badge/renderer-Pixi.js%208-green" alt="Renderer"/>
-  <img src="https://img.shields.io/badge/AI-Mistral%20Vibe%20%2B%20Claude-purple" alt="AI"/>
+  <img src="https://img.shields.io/badge/AI-Claude%20Code%20%7C%20Mistral%20Vibe-purple" alt="AI"/>
 </p>
 
 ---
 
 ## What Is This?
 
-**It's Time to Build** is a top-down pixel art strategy game that merges real-time combat, base management, and autonomous AI agents who generate actual React applications from scratch. You don't just tell your agents to "build a weather dashboard" — they spin up a real Vibe CLI session, write TypeScript, and produce a working app. The code is then graded by Claude AI, and your building's income depends on how good the code actually is.
+**It's Time to Build** is a top-down pixel art strategy game that merges real-time combat, base management, and autonomous AI agents who generate actual React applications from scratch. You don't just tell your agents to "build a weather dashboard" — they spin up a real AI coding session, write TypeScript, and produce a working app. Choose your AI engine: **Claude Code** (Anthropic) or **Mistral Vibe** — selected on the title screen. The code is then graded by Claude AI, and your building's income depends on how good the code actually is.
 
 Your goal: progress through five civilization phases — **Hut, Outpost, Village, Network, City** — by constructing buildings, managing your token economy, crafting equipment, and fending off waves of corrupted rogue agents that want to tear it all down.
 
 ## Key Features
 
 ### Real AI Agent Workers
-- Agents use **Mistral Vibe CLI** to write actual React applications in real time
+- Choose your AI engine on the title screen: **Claude Code** or **Mistral Vibe**
+- Agents spawn real CLI sessions to write actual React applications in real time
 - 4 agent tiers (**Apprentice, Journeyman, Artisan, Architect**) with increasing capability
-- Each tier runs a different Mistral model (3B → Large)
+- **Claude Code**: Haiku 4.5 → Sonnet 4.6 → Opus 4.6 (uses existing machine auth, no API key needed)
+- **Mistral Vibe**: Ministral 3B → Codestral → Devstral 2 (requires Mistral API key)
 - Agents have morale, XP, levels, health, and a limited number of work turns
 - Recruit **bound agents** scattered across the map by defeating their rogue guardians
 
@@ -159,7 +161,7 @@ its-time-to-build-game/
 │   │   ├── game/                  # Game logic (agents, buildings, progression, upgrades)
 │   │   ├── ai/                    # Rogue enemy AI behaviors
 │   │   ├── network/               # WebSocket server
-│   │   ├── vibe/                  # Mistral Vibe CLI session management
+│   │   ├── vibe/                  # AI CLI session management (Claude Code + Mistral Vibe)
 │   │   ├── project/               # React app scaffolding per building
 │   │   └── grading/               # Claude API code evaluation
 │   └── Cargo.toml
@@ -182,43 +184,50 @@ its-time-to-build-game/
 
 - **Node.js** 18+ (for the client)
 - **Rust** 1.70+ with Cargo (for the server)
-- **Mistral API Key** (required — powers agent building sessions via Vibe CLI)
+- **One of the following AI backends:**
+  - **Claude Code CLI** — uses your existing `claude` login (no API key needed)
+  - **Mistral Vibe CLI** + **Mistral API Key** — set in-game or via environment
 - **Anthropic API Key** (optional — enables LLM code grading for star ratings)
 
-### Environment Setup
+### Environment Setup (optional)
 
-Create a `.env` file in the `server/` directory:
+If using **Mistral Vibe**, create a `.env` file in the `server/` directory:
 
 ```env
 MISTRAL_API_KEY=your_mistral_api_key_here
 ```
 
-The Anthropic API key can be set in-game via the settings UI, or added to the `.env`:
+For code grading, add your Anthropic key (or set it in-game via settings):
 
 ```env
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
+If using **Claude Code**, no environment setup is needed — it uses your existing CLI authentication.
+
 ### Running the Game
 
-**1. Start the server:**
+**One command:**
 
 ```bash
-cd server
-cargo run
+./run.sh
 ```
 
-The server starts on `ws://localhost:7777` by default.
+This starts both the server (`ws://localhost:9001`) and client (`http://localhost:5173`).
 
-**2. Start the client:**
+**Or start them separately:**
 
 ```bash
-cd client
-npm install
-npm run dev
+# Terminal 1 — Server
+cd server && cargo run
+
+# Terminal 2 — Client
+cd client && npm install && npm run dev
 ```
 
-The client opens at `http://localhost:5173`. On first launch, you'll be prompted to select a project directory — this is where agent-generated React apps will be scaffolded.
+On first launch, you'll be prompted to:
+1. **Choose your AI engine** (Claude Code or Mistral Vibe)
+2. **Select a project directory** — where agent-generated React apps will be scaffolded
 
 ### Building for Production
 
@@ -281,7 +290,7 @@ Idle → Walking → Building (Vibe CLI) → Idle
                Unresponsive → (revive for tokens)
 ```
 
-Agents earn XP from completed buildings. Higher-tier agents use more powerful Mistral models but cost more in wages. Agents at home base can be set to **Dormant** to avoid wage costs.
+Agents earn XP from completed buildings. Higher-tier agents use more powerful AI models but cost more in wages. Agents at home base can be set to **Dormant** to avoid wage costs.
 
 ### Economy Balance
 
@@ -322,7 +331,7 @@ Tier 3 (Infrastructure)      Tier 4 (Late Game)
 
 ## Technical Highlights
 
-- **Real code generation**: Agents don't fake it — they run actual Vibe CLI sessions via PTY to generate React apps
+- **Real code generation**: Agents don't fake it — they run actual AI CLI sessions (Claude Code or Mistral Vibe) via PTY to generate React apps
 - **ECS architecture**: hecs enables clean separation of game data and logic with efficient queries
 - **Binary protocol**: MessagePack serialization keeps network traffic compact at 20 Hz tick rate
 - **Deterministic world gen**: Simplex noise with seeds means the same world every time
