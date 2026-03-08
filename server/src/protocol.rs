@@ -300,6 +300,14 @@ pub struct GameStateUpdate {
     pub chest_rewards: Vec<ChestReward>,
 }
 
+// ── AI Backend ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AiBackend {
+    MistralVibe,
+    ClaudeCode,
+}
+
 // ── Client → Server messages ───────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -362,6 +370,7 @@ pub enum PlayerAction {
     // Vibe session actions
     VibeInput { agent_id: u64, data: String },
     SetMistralApiKey { key: String },
+    SetAiBackend { backend: AiBackend },
 
     // Grading actions
     GradeBuilding { building_id: String },

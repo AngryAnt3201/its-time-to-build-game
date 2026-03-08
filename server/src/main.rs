@@ -542,6 +542,10 @@ async fn main() {
                         vibe_manager.set_api_key(key.clone());
                         debug_log_entries.push("[vibe] Mistral API key set".to_string());
                     }
+                    PlayerAction::SetAiBackend { backend } => {
+                        vibe_manager.set_backend(*backend);
+                        debug_log_entries.push(format!("[vibe] AI backend set to {:?}", backend));
+                    }
                     PlayerAction::SetAnthropicApiKey { key } => {
                         grading_service.set_api_key(key.clone());
                         debug_log_entries.push("[grading] Anthropic API key set".to_string());

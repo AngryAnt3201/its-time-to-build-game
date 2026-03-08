@@ -276,6 +276,10 @@ export type ServerMessage =
   | { VibeSessionEnded: { agent_id: number; reason: string } }
   | { GradeResult: { building_id: string; stars: number; reasoning: string } };
 
+// ── AI Backend ────────────────────────────────────────────────────
+
+export type AiBackend = "MistralVibe" | "ClaudeCode";
+
 // ── Client -> Server messages ──────────────────────────────────────
 
 // Serde externally-tagged enum: unit variants serialize as plain strings,
@@ -328,6 +332,7 @@ export type PlayerAction =
   | { UnlockBuilding: { building_id: string } }
   | { VibeInput: { agent_id: number; data: string } }
   | { SetMistralApiKey: { key: string } }
+  | { SetAiBackend: { backend: AiBackend } }
   | { GradeBuilding: { building_id: string } }
   | { SetAnthropicApiKey: { key: string } };
 

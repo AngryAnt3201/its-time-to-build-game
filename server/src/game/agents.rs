@@ -161,6 +161,56 @@ pub fn generate_vibe_config(tier: AgentTierKind) -> AgentVibeConfig {
     }
 }
 
+/// Generate the Claude Code configuration for a given agent tier.
+pub fn generate_claude_config(tier: AgentTierKind) -> AgentVibeConfig {
+    match tier {
+        AgentTierKind::Apprentice => AgentVibeConfig {
+            model_id: "claude-haiku-4-5-20251001".to_string(),
+            model_lore_name: "Flickering Candle".to_string(),
+            vibe_agent_name: "claude-haiku-4-5-20251001".to_string(),
+            max_turns: 5,
+            turns_used: 0,
+            context_window: 200_000,
+            token_burn_rate: 3,
+            error_chance_base: 0.15,
+            stars: 1,
+        },
+        AgentTierKind::Journeyman => AgentVibeConfig {
+            model_id: "claude-sonnet-4-6".to_string(),
+            model_lore_name: "Steady Flame".to_string(),
+            vibe_agent_name: "claude-sonnet-4-6".to_string(),
+            max_turns: 15,
+            turns_used: 0,
+            context_window: 200_000,
+            token_burn_rate: 2,
+            error_chance_base: 0.08,
+            stars: 2,
+        },
+        AgentTierKind::Artisan => AgentVibeConfig {
+            model_id: "claude-sonnet-4-6".to_string(),
+            model_lore_name: "Codestral Engine".to_string(),
+            vibe_agent_name: "claude-sonnet-4-6".to_string(),
+            max_turns: 30,
+            turns_used: 0,
+            context_window: 200_000,
+            token_burn_rate: 1,
+            error_chance_base: 0.04,
+            stars: 3,
+        },
+        AgentTierKind::Architect => AgentVibeConfig {
+            model_id: "claude-opus-4-6".to_string(),
+            model_lore_name: "Abyssal Architect".to_string(),
+            vibe_agent_name: "claude-opus-4-6".to_string(),
+            max_turns: 50,
+            turns_used: 0,
+            context_window: 200_000,
+            token_burn_rate: 1,
+            error_chance_base: 0.02,
+            stars: 3,
+        },
+    }
+}
+
 /// Pick a random name from the name bank.
 fn pick_name() -> String {
     let mut rng = rand::thread_rng();

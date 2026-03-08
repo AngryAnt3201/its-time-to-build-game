@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
+use crate::protocol::AiBackend;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum VibeSessionState {
     Running,
@@ -32,6 +34,7 @@ impl VibeSession {
         api_key: String,
         enabled_tools: Vec<String>,
         output_tx: mpsc::UnboundedSender<Vec<u8>>,
+        backend: AiBackend,
     ) -> Result<Self, String> {
         let pty_system = NativePtySystem::default();
 
@@ -44,16 +47,33 @@ impl VibeSession {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let mut cmd = CommandBuilder::new("vibe");
-        cmd.arg("--agent");
-        cmd.arg(&vibe_agent_name);
-        cmd.arg("--max-turns");
-        cmd.arg(max_turns.to_string());
-        for tool in &enabled_tools {
-            cmd.arg("--enabled-tools");
-            cmd.arg(tool);
-        }
-        cmd.env("MISTRAL_API_KEY", &api_key);
+        let mut cmd = match backend {
+            AiBackend::MistralVibe => {
+                let mut c = CommandBuilder::new("vibe");
+                c.arg("--agent");
+                c.arg(&vibe_agent_name);
+                c.arg("--max-turns");
+                c.arg(max_turns.to_string());
+                for tool in &enabled_tools {
+                    c.arg("--enabled-tools");
+                    c.arg(tool);
+                }
+                c.env("MISTRAL_API_KEY", &api_key);
+                c
+            }
+            AiBackend::ClaudeCode => {
+                let mut c = CommandBuilder::new("claude");
+                c.arg("--model");
+                c.arg(&vibe_agent_name);
+                c.arg("--max-turns");
+                c.arg(max_turns.to_string());
+                for tool in &enabled_tools {
+                    c.arg("--allowedTools");
+                    c.arg(tool);
+                }
+                c
+            }
+        };
         cmd.cwd(&working_dir);
 
         let child = pty_pair
@@ -86,9 +106,13 @@ impl VibeSession {
             }
         });
 
+        let backend_name = match backend {
+            AiBackend::MistralVibe => "Mistral Vibe",
+            AiBackend::ClaudeCode => "Claude Code",
+        };
         info!(
-            "Vibe session spawned for agent {} on building {} (agent: {}, max_turns: {}, tools: {:?})",
-            agent_id, building_id, vibe_agent_name, max_turns, enabled_tools
+            "{} session spawned for agent {} on building {} (agent: {}, max_turns: {}, tools: {:?})",
+            backend_name, agent_id, building_id, vibe_agent_name, max_turns, enabled_tools
         );
 
         // Take the writer once and store it for reuse
@@ -158,7 +182,7 @@ impl VibeSession {
             let _ = handle.join();
         }
         self.state = VibeSessionState::Completed;
-        info!("Vibe session killed for agent {}", self.agent_id);
+        info!("AI session killed for agent {}", self.agent_id);
     }
 }
 

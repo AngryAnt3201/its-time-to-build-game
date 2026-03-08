@@ -3,12 +3,14 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 use tracing::info;
 
+use crate::protocol::AiBackend;
 use super::session::VibeSession;
 
 /// Manages all active Vibe CLI sessions.
 pub struct VibeManager {
     sessions: HashMap<u64, VibeSession>,
     api_key: Option<String>,
+    backend: AiBackend,
     output_receivers: HashMap<u64, mpsc::UnboundedReceiver<Vec<u8>>>,
     /// Tracks agents whose session spawn failed, so we don't retry every tick.
     failed_spawns: std::collections::HashSet<u64>,
@@ -23,6 +25,7 @@ impl VibeManager {
         Self {
             sessions: HashMap::new(),
             api_key,
+            backend: AiBackend::MistralVibe,
             output_receivers: HashMap::new(),
             failed_spawns: std::collections::HashSet::new(),
         }
@@ -33,8 +36,20 @@ impl VibeManager {
         info!("Mistral API key set");
     }
 
+    pub fn set_backend(&mut self, backend: AiBackend) {
+        info!("AI backend set to {:?}", backend);
+        self.backend = backend;
+    }
+
+    pub fn backend(&self) -> AiBackend {
+        self.backend
+    }
+
     pub fn has_api_key(&self) -> bool {
-        self.api_key.as_ref().map_or(false, |k| !k.is_empty())
+        match self.backend {
+            AiBackend::ClaudeCode => true,
+            AiBackend::MistralVibe => self.api_key.as_ref().map_or(false, |k| !k.is_empty()),
+        }
     }
 
     /// Spawn a vibe session for an agent at its building.
@@ -47,11 +62,15 @@ impl VibeManager {
         max_turns: u32,
         enabled_tools: Vec<String>,
     ) -> Result<(), String> {
-        let api_key = self
-            .api_key
-            .as_ref()
-            .ok_or_else(|| "No Mistral API key set".to_string())?
-            .clone();
+        let api_key = match self.backend {
+            AiBackend::MistralVibe => {
+                self.api_key
+                    .as_ref()
+                    .ok_or_else(|| "No Mistral API key set".to_string())?
+                    .clone()
+            }
+            AiBackend::ClaudeCode => String::new(),
+        };
 
         if self.sessions.contains_key(&agent_id) {
             return Err(format!("Session already exists for agent {}", agent_id));
@@ -68,6 +87,7 @@ impl VibeManager {
             api_key,
             enabled_tools,
             output_tx,
+            self.backend,
         )?;
 
         self.sessions.insert(agent_id, session);
