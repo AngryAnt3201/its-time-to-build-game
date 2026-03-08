@@ -15,6 +15,10 @@
 </p>
 
 <p align="center">
+  <img src="assets/git_media/3vc086cqz4y_1772334314292.webp" alt="Gameplay Screenshot" width="800"/>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/client-TypeScript%20%2B%20React-blue" alt="Client"/>
   <img src="https://img.shields.io/badge/server-Rust%20%2B%20Tokio-orange" alt="Server"/>
   <img src="https://img.shields.io/badge/renderer-Pixi.js%208-green" alt="Renderer"/>
