@@ -3,6 +3,7 @@ import { SettingsModal } from './SettingsModal';
 import { Particles } from './Particles';
 import { useTitleAudio } from './use-title-audio';
 import { getProjectDir, setProjectDir, setProjectInitFlag, browseForDirectory } from '../../utils/project-settings';
+import { getAiBackend, setAiBackend, type AiBackend } from '../../utils/ai-backend';
 import './TitleScreen.css';
 
 interface TitleScreenProps {
@@ -15,6 +16,7 @@ export function TitleScreen({ onPlay }: TitleScreenProps) {
   const [projectDir, setProjectDirState] = useState<string | null>(getProjectDir());
   const [browsing, setBrowsing] = useState(false);
   const [initializing, setInitializing] = useState(false);
+  const [backend, setBackendState] = useState<AiBackend | null>(getAiBackend());
   const { playClick } = useTitleAudio();
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export function TitleScreen({ onPlay }: TitleScreenProps) {
     }
   }, [settingsOpen]);
 
-  const isReady = !!projectDir && projectDir.length > 0;
+  const isReady = !!projectDir && projectDir.length > 0 && !!backend;
 
   function handlePlay() {
     if (!isReady) return;
@@ -36,6 +38,12 @@ export function TitleScreen({ onPlay }: TitleScreenProps) {
     setProjectInitFlag(true);
     setInitializing(true);
     onPlay();
+  }
+
+  function handleSelectBackend(b: AiBackend) {
+    playClick();
+    setAiBackend(b);
+    setBackendState(b);
   }
 
   async function handleBrowse() {
@@ -103,6 +111,27 @@ export function TitleScreen({ onPlay }: TitleScreenProps) {
           </h1>
           <div className="title-rule" />
           <p className="subtitle">THE EXPERIENCE</p>
+        </div>
+
+        {/* ── AI Backend selection ────────────────────────── */}
+        <div className="backend-selection">
+          <p className="backend-prompt">CHOOSE YOUR AI ENGINE</p>
+          <div className="backend-cards">
+            <button
+              className={`backend-card ${backend === 'ClaudeCode' ? 'backend-card--selected' : ''}`}
+              onClick={() => handleSelectBackend('ClaudeCode')}
+            >
+              <span className="backend-card-name">CLAUDE CODE</span>
+              <span className="backend-card-desc">Anthropic</span>
+            </button>
+            <button
+              className={`backend-card ${backend === 'MistralVibe' ? 'backend-card--selected' : ''}`}
+              onClick={() => handleSelectBackend('MistralVibe')}
+            >
+              <span className="backend-card-name">MISTRAL VIBE</span>
+              <span className="backend-card-desc">Mistral AI</span>
+            </button>
+          </div>
         </div>
 
         {/* ── Project setup section ─────────────────────────── */}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getApiKey, setApiKey } from '../../utils/api-keys';
 import { getProjectDir, setProjectDir, setProjectInitFlag, browseForDirectory } from '../../utils/project-settings';
+import { getAiBackend } from '../../utils/ai-backend';
 
 interface SettingsModalProps {
   open: boolean;
@@ -88,26 +89,28 @@ export function SettingsModal({ open, onClose, onClickSound }: SettingsModalProp
         </button>
         <h2 className="modal-title">Settings</h2>
 
-        <div className="input-group">
-          <label>Mistral API Key</label>
-          <div className="input-wrapper">
-            <input
-              type={showMistral ? 'text' : 'password'}
-              value={mistralKey}
-              onChange={(e) => setMistralKey(e.target.value)}
-              placeholder="sk-..."
-              spellCheck={false}
-              autoComplete="off"
-            />
-            <button
-              className="toggle-visibility"
-              onClick={toggleMistral}
-              type="button"
-            >
-              {showMistral ? 'HIDE' : 'SHOW'}
-            </button>
+        {getAiBackend() !== 'ClaudeCode' && (
+          <div className="input-group">
+            <label>Mistral API Key</label>
+            <div className="input-wrapper">
+              <input
+                type={showMistral ? 'text' : 'password'}
+                value={mistralKey}
+                onChange={(e) => setMistralKey(e.target.value)}
+                placeholder="sk-..."
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <button
+                className="toggle-visibility"
+                onClick={toggleMistral}
+                type="button"
+              >
+                {showMistral ? 'HIDE' : 'SHOW'}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="input-group">
           <label>ElevenLabs API Key</label>

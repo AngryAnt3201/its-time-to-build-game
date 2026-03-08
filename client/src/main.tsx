@@ -33,6 +33,7 @@ import type { GameStateUpdate, PlayerInput, PlayerAction, EntityDelta, BuildingT
 import { AudioManager } from './audio/manager';
 import { getProjectDir, getProjectInitFlag, setProjectInitFlag } from './utils/project-settings';
 import { getApiKey } from './utils/api-keys';
+import { getAiBackend } from './utils/ai-backend';
 
 
 /** Convert PascalCase building type to snake_case building ID. */
@@ -515,15 +516,28 @@ async function startGame() {
     }
   }
 
-  // Send Mistral API key to server for vibe sessions
-  const mistralKey = getApiKey('mistral');
-  if (mistralKey) {
+  // Send AI backend selection to server
+  const selectedBackend = getAiBackend();
+  if (selectedBackend) {
     connection.sendInput({
       tick: 0,
       movement: { x: 0, y: 0 },
-      action: { SetMistralApiKey: { key: mistralKey } },
+      action: { SetAiBackend: { backend: selectedBackend } },
       target: null,
     });
+  }
+
+  // Send Mistral API key to server for vibe sessions (only if using Mistral)
+  if (selectedBackend !== 'ClaudeCode') {
+    const mistralKey = getApiKey('mistral');
+    if (mistralKey) {
+      connection.sendInput({
+        tick: 0,
+        movement: { x: 0, y: 0 },
+        action: { SetMistralApiKey: { key: mistralKey } },
+        target: null,
+      });
+    }
   }
 
   // ── Client tick counter (used by both game loop and callbacks) ──
