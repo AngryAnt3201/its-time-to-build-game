@@ -10,12 +10,24 @@ const TIER_ICONS: Record<string, string> = {
   Architect: 'agent_4.png',
 };
 
-const TIER_MODEL_NAMES: Record<string, string> = {
+const MISTRAL_MODEL_NAMES: Record<string, string> = {
   Apprentice: 'Ministral 3B',
   Journeyman: 'Ministral 8B',
   Artisan: 'Codestral',
   Architect: 'Devstral 2',
 };
+
+const CLAUDE_MODEL_NAMES: Record<string, string> = {
+  Apprentice: 'Haiku 4.5',
+  Journeyman: 'Sonnet 4.6',
+  Artisan: 'Sonnet 4.6',
+  Architect: 'Opus 4.6',
+};
+
+function getTierModelNames(): Record<string, string> {
+  const backend = localStorage.getItem('ai_backend');
+  return backend === 'ClaudeCode' ? CLAUDE_MODEL_NAMES : MISTRAL_MODEL_NAMES;
+}
 
 const STATE_COLORS: Record<string, string> = {
   Idle: '#ccaa44',
@@ -166,7 +178,7 @@ export class AgentWorldTooltip {
 
     // Model + tier line
     const modelEl = document.createElement('div');
-    modelEl.textContent = `${TIER_MODEL_NAMES[agent.tier] ?? agent.tier}  \u00b7  ${agent.tier}`;
+    modelEl.textContent = `${getTierModelNames()[agent.tier] ?? agent.tier}  \u00b7  ${agent.tier}`;
     modelEl.style.cssText = 'color: #6a6a5a; font-size: 9px; margin-bottom: 6px;';
     this.container.appendChild(modelEl);
 

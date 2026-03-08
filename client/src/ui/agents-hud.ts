@@ -74,12 +74,24 @@ const tooltipModelStyle = new TextStyle({
 
 const TOOLTIP_W = 210;
 
-const TIER_MODEL_NAMES: Record<AgentTierKind, string> = {
+const MISTRAL_MODEL_NAMES: Record<AgentTierKind, string> = {
   Apprentice: 'Ministral 3B',
   Journeyman: 'Ministral 8B',
   Artisan: 'Codestral',
   Architect: 'Devstral 2',
 };
+
+const CLAUDE_MODEL_NAMES: Record<AgentTierKind, string> = {
+  Apprentice: 'Haiku 4.5',
+  Journeyman: 'Sonnet 4.6',
+  Artisan: 'Sonnet 4.6',
+  Architect: 'Opus 4.6',
+};
+
+function getTierModelNames(): Record<AgentTierKind, string> {
+  const backend = localStorage.getItem('ai_backend');
+  return backend === 'ClaudeCode' ? CLAUDE_MODEL_NAMES : MISTRAL_MODEL_NAMES;
+}
 
 const TIER_ICONS: Record<AgentTierKind, string> = {
   Apprentice: 'agent_1.png',
@@ -625,7 +637,7 @@ export class AgentsHUD {
     this.tooltipLore.x = iconContentX;
 
     // Model name
-    this.tooltipModel.text = TIER_MODEL_NAMES[agent.tier] + '  \u00b7  ' + agent.tier;
+    this.tooltipModel.text = getTierModelNames()[agent.tier] + '  \u00b7  ' + agent.tier;
     this.tooltipModel.x = iconContentX;
 
     // Stats
